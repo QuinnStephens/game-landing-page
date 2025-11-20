@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixi + Matter Physics Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            margin: 0 auto;
+            border: 2px solid #16213e;
+        }
+        #debugCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #0f3460;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #16213e;
+        }
+        button.active {
+            background: #e94560;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="debugBtn">Toggle Debug (D)</button>
+        <button id="spawnBtn">Spawn Random Object (Space)</button>
+        <button id="resetBtn">Reset Scene (R)</button>
+    </div>
+    <div id="gameContainer"></div>
+
+    <script>
+        const { Engine, Render, Bodies, World, Mouse, MouseConstraint, Events } = Matter;
+
+        // Create Pixi Application
+        const app = new PIXI.Application({
+            width: 800,
+            height: 600,
+            backgroundColor: 0x0f3460,
+            antialias: true
+        });
+        document.getElementById('gameContainer').appendChild(app.view);
+
+        // Create Matter.js engine
+        const engine = Engine.create();
+        engine.gravity.y = 1;
+
+        // Debug render setup
+        const debugCanvas = document.createElement('canvas');
+        debugCanvas.id = 'debugCanvas';
+        debugCanvas.width = 800;
+        debugCanvas.height = 600;
+        document.getElementById('gameContainer').appendChild(debugCanvas);
+        
+        const debugRender = Render.create({
+            canvas: debugCanvas,
+            engine: engine,
+            options: {
+                width: 800,
+                height: 600,
+                wireframes: true,
+                background: 'transparent',
+                wireframeBackground: 'transparent'
+            }
+        });
+
+        let debugMode = false;
+        debugCanvas.style.display = 'none';
+
+        // Storage for Pixi sprites and their Matter bodies
+        const objects = [];
+
+        // Create ground
+        const ground = Bodies.rectangle(400, 580, 800, 40, { 
+            isStatic: true,
+            friction: 0.5,
+            restitution: 0.3
+        });
+        World.add(engine.world, ground);
+
+        const groundSprite = new PIXI.Graphics();
+        groundSprite.beginFill(0x16213e);
+        groundSprite.drawRect(0, 560, 800, 40);
+        groundSprite.endFill();
+        app.stage.addChild(groundSprite);
+
+        // Create walls
+        const leftWall = Bodies.rectangle(0, 300, 40, 600, { isStatic: true });
+        const rightWall = Bodies.rectangle(800, 300, 40, 600, { isStatic: true });
+        World.add(engine.world, [leftWall, rightWall]);
+
+        // Function to create a box
+        function createBox(x, y) {
+            const size = 40 + Math.random() * 40;
+            const body = Bodies.rectangle(x, y, size, size, {
+                restitution: 0.6,
+                friction: 0.5
+            });
+
+            const sprite = new PIXI.Graphics();
+            const color = Math.random() * 0xFFFFFF;
+            sprite.beginFill(color);
+            sprite.drawRect(-size/2, -size/2, size, size);
+            sprite.endFill();
+            
+            app.stage.addChild(sprite);
+            World.add(engine.world, body);
+            
+            objects.push({ body, sprite });
+        }
+
+        // Function to create a circle
+        function createCircle(x, y) {
+            const radius = 20 + Math.random() * 30;
+            const body = Bodies.circle(x, y, radius, {
+                restitution: 0.8,
+                friction: 0.3
+            });
+
+            const sprite = new PIXI.Graphics();
+            const color = Math.random() * 0xFFFFFF;
+            sprite.beginFill(color);
+            sprite.drawCircle(0, 0, radius);
+            sprite.endFill();
+            
+            app.stage.addChild(sprite);
+            World.add(engine.world, body);
+            
+            objects.push({ body, sprite });
+        }
+
+        // Function to spawn random object
+        function spawnRandomObject() {
+            const x = 200 + Math.random() * 400;
+            const y = 50;
+            
+            if (Math.random() > 0.5) {
+                createBox(x, y);
+            } else {
+                createCircle(x, y);
+            }
+        }
+
+        // Initialize scene with some objects
+        function initScene() {
+            createBox(300, 200);
+            createBox(500, 150);
+            createCircle(400, 100);
+            createCircle(250, 250);
+            createBox(550, 300);
+        }
+
+        // Reset scene
+        function resetScene() {
+            objects.forEach(obj => {
+                World.remove(engine.world, obj.body);
+                app.stage.removeChild(obj.sprite);
+            });
+            objects.length = 0;
+            initScene();
+        }
+
+        // Toggle debug mode
+        function toggleDebug() {
+            debugMode = !debugMode;
+            debugCanvas.style.display = debugMode ? 'block' : 'none';
+            document.getElementById('debugBtn').classList.toggle('active', debugMode);
+        }
+
+        // Mouse interaction
+        const mouse = Mouse.create(app.view);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: {
+                stiffness: 0.2,
+                render: { visible: false }
+            }
+        });
+        World.add(engine.world, mouseConstraint);
+
+        // Game loop
+        app.ticker.add(() => {
+            Engine.update(engine, 1000 / 60);
+            
+            // Update Pixi sprites to match Matter bodies
+            objects.forEach(obj => {
+                obj.sprite.x = obj.body.position.x;
+                obj.sprite.y = obj.body.position.y;
+                obj.sprite.rotation = obj.body.angle;
+            });
+
+            // Update debug render if active
+            if (debugMode) {
+                Render.world(debugRender);
+            }
+        });
+
+        // Controls
+        document.getElementById('debugBtn').addEventListener('click', toggleDebug);
+        document.getElementById('spawnBtn').addEventListener('click', spawnRandomObject);
+        document.getElementById('resetBtn').addEventListener('click', resetScene);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'd' || e.key === 'D') {
+                toggleDebug();
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                spawnRandomObject();
+            } else if (e.key === 'r' || e.key === 'R') {
+                resetScene();
+            }
+        });
+
+        // Initialize
+        initScene();
+    </script>
+</body>
+</html>
