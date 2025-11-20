@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -14,6 +15,7 @@
             font-family: Arial, sans-serif;
             color: white;
         }
+
         #gameContainer {
             position: relative;
             width: 800px;
@@ -21,16 +23,19 @@
             margin: 0 auto;
             border: 2px solid #16213e;
         }
+
         #debugCanvas {
             position: absolute;
             top: 0;
             left: 0;
             pointer-events: none;
         }
+
         .controls {
             text-align: center;
             margin: 20px 0;
         }
+
         button {
             background: #0f3460;
             color: white;
@@ -41,14 +46,17 @@
             border-radius: 4px;
             font-size: 14px;
         }
+
         button:hover {
             background: #16213e;
         }
+
         button.active {
             background: #e94560;
         }
     </style>
 </head>
+
 <body>
     <div class="controls">
         <button id="debugBtn">Toggle Debug (D)</button>
@@ -79,7 +87,7 @@
         debugCanvas.width = 800;
         debugCanvas.height = 600;
         document.getElementById('gameContainer').appendChild(debugCanvas);
-        
+
         const debugRender = Render.create({
             canvas: debugCanvas,
             engine: engine,
@@ -97,9 +105,11 @@
 
         // Storage for Pixi sprites and their Matter bodies
         const objects = [];
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        let currentLetterIndex = 0;
 
         // Create ground
-        const ground = Bodies.rectangle(400, 580, 800, 40, { 
+        const ground = Bodies.rectangle(400, 580, 800, 40, {
             isStatic: true,
             friction: 0.5,
             restitution: 0.3
@@ -117,65 +127,58 @@
         const rightWall = Bodies.rectangle(800, 300, 40, 600, { isStatic: true });
         World.add(engine.world, [leftWall, rightWall]);
 
-        // Function to create a box
-        function createBox(x, y) {
-            const size = 40 + Math.random() * 40;
+        // Function to create a letter
+        function createLetter(x, y, letter) {
+            const size = 50;
             const body = Bodies.rectangle(x, y, size, size, {
                 restitution: 0.6,
                 friction: 0.5
             });
 
-            const sprite = new PIXI.Graphics();
-            const color = Math.random() * 0xFFFFFF;
-            sprite.beginFill(color);
-            sprite.drawRect(-size/2, -size/2, size, size);
-            sprite.endFill();
-            
-            app.stage.addChild(sprite);
-            World.add(engine.world, body);
-            
-            objects.push({ body, sprite });
-        }
+            const container = new PIXI.Container();
 
-        // Function to create a circle
-        function createCircle(x, y) {
-            const radius = 20 + Math.random() * 30;
-            const body = Bodies.circle(x, y, radius, {
-                restitution: 0.8,
-                friction: 0.3
+            // Background box
+            const bg = new PIXI.Graphics();
+            const color = 0x4ECDC4 + Math.random() * 0x111111;
+            bg.beginFill(color);
+            bg.drawRoundedRect(-size / 2, -size / 2, size, size, 8);
+            bg.endFill();
+            container.addChild(bg);
+
+            // Letter text
+            const text = new PIXI.Text(letter, {
+                fontFamily: 'Arial',
+                fontSize: 32,
+                fontWeight: 'bold',
+                fill: 0xFFFFFF,
+                align: 'center'
             });
+            text.anchor.set(0.5);
+            container.addChild(text);
 
-            const sprite = new PIXI.Graphics();
-            const color = Math.random() * 0xFFFFFF;
-            sprite.beginFill(color);
-            sprite.drawCircle(0, 0, radius);
-            sprite.endFill();
-            
-            app.stage.addChild(sprite);
+            app.stage.addChild(container);
             World.add(engine.world, body);
-            
-            objects.push({ body, sprite });
+
+            objects.push({ body, sprite: container });
         }
 
-        // Function to spawn random object
+        // Function to spawn random letter
         function spawnRandomObject() {
             const x = 200 + Math.random() * 400;
             const y = 50;
-            
-            if (Math.random() > 0.5) {
-                createBox(x, y);
-            } else {
-                createCircle(x, y);
-            }
+            const letter = alphabet[currentLetterIndex];
+            createLetter(x, y, letter);
+            currentLetterIndex = (currentLetterIndex + 1) % alphabet.length;
         }
 
-        // Initialize scene with some objects
+        // Initialize scene with some letters
         function initScene() {
-            createBox(300, 200);
-            createBox(500, 150);
-            createCircle(400, 100);
-            createCircle(250, 250);
-            createBox(550, 300);
+            createLetter(300, 200, 'H');
+            createLetter(500, 150, 'E');
+            createLetter(400, 100, 'L');
+            createLetter(250, 250, 'L');
+            createLetter(550, 300, 'O');
+            currentLetterIndex = 5; // Start from 'F' for next spawns
         }
 
         // Reset scene
@@ -209,7 +212,7 @@
         // Game loop
         app.ticker.add(() => {
             Engine.update(engine, 1000 / 60);
-            
+
             // Update Pixi sprites to match Matter bodies
             objects.forEach(obj => {
                 obj.sprite.x = obj.body.position.x;
@@ -244,4 +247,5 @@
         initScene();
     </script>
 </body>
+
 </html>
