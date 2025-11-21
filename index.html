@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pixi + Matter Physics Demo</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.13.0/pixi.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
         body {
@@ -65,23 +65,21 @@
     </div>
     <div id="gameContainer"></div>
 
-    <script>
-        const { Engine, Render, Bodies, World, Mouse, MouseConstraint, Events } = Matter;
+    <script type="module">
+        const { Engine, Render, Body, Bodies, World, Events, Composites } = Matter;
 
-        // Create Pixi Application
-        const app = new PIXI.Application({
+        const app = new PIXI.Application()
+        await app.init({
             width: 800,
             height: 600,
             backgroundColor: 0x0f3460,
             antialias: true
         });
-        document.getElementById('gameContainer').appendChild(app.view);
+        document.getElementById('gameContainer').appendChild(app.canvas);
 
-        // Create Matter.js engine
         const engine = Engine.create();
         engine.gravity.y = 1;
 
-        // Debug render setup
         const debugCanvas = document.createElement('canvas');
         debugCanvas.id = 'debugCanvas';
         debugCanvas.width = 800;
@@ -100,15 +98,19 @@
             }
         });
 
-        let debugMode = false;
-        debugCanvas.style.display = 'none';
+        async function loadTexture(name) {
+            const path = "public/img/" + name + ".png";
+            const texture = await PIXI.Assets.load(path);
+            texture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+            return texture;
+        }
 
-        // Storage for Pixi sprites and their Matter bodies
+        let debugMode = true;
+
         const objects = [];
         const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
         let currentLetterIndex = 0;
 
-        // Create ground
         const ground = Bodies.rectangle(400, 580, 800, 40, {
             isStatic: true,
             friction: 0.5,
@@ -122,14 +124,13 @@
         groundSprite.endFill();
         app.stage.addChild(groundSprite);
 
-        // Create walls
         const leftWall = Bodies.rectangle(0, 300, 40, 600, { isStatic: true });
         const rightWall = Bodies.rectangle(800, 300, 40, 600, { isStatic: true });
-        World.add(engine.world, [leftWall, rightWall]);
+        const ceiling = Bodies.rectangle(400, 0, 800, 40, { isStatic: true });
+        World.add(engine.world, [leftWall, rightWall, ceiling]);
 
-        // Function to create a letter
         function createLetter(x, y, letter) {
-            const size = 50;
+            const size = 80;
             const body = Bodies.rectangle(x, y, size, size, {
                 restitution: 0.6,
                 friction: 0.5
@@ -137,21 +138,28 @@
 
             const container = new PIXI.Container();
 
-            // Background box
             const bg = new PIXI.Graphics();
-            const color = 0x4ECDC4 + Math.random() * 0x111111;
+            const colors = [0xE81416,
+                0xFFA500,
+                0xFAEB36,
+                0x79C314,
+                0x487DE7,
+                0x4B369D,
+                0x70369D];
+            const color = colors[Math.floor(Math.random() * colors.length)]
+
             bg.beginFill(color);
             bg.drawRoundedRect(-size / 2, -size / 2, size, size, 8);
             bg.endFill();
             container.addChild(bg);
 
-            // Letter text
             const text = new PIXI.Text(letter, {
                 fontFamily: 'Arial',
                 fontSize: 32,
                 fontWeight: 'bold',
                 fill: 0xFFFFFF,
-                align: 'center'
+                align: 'center',
+                dropShadow: true,
             });
             text.anchor.set(0.5);
             container.addChild(text);
@@ -162,7 +170,6 @@
             objects.push({ body, sprite: container });
         }
 
-        // Function to spawn random letter
         function spawnRandomObject() {
             const x = 200 + Math.random() * 400;
             const y = 50;
@@ -171,17 +178,16 @@
             currentLetterIndex = (currentLetterIndex + 1) % alphabet.length;
         }
 
-        // Initialize scene with some letters
-        function initScene() {
-            createLetter(300, 200, 'H');
-            createLetter(500, 150, 'E');
-            createLetter(400, 100, 'L');
-            createLetter(250, 250, 'L');
-            createLetter(550, 300, 'O');
-            currentLetterIndex = 5; // Start from 'F' for next spawns
-        }
+        let car;
 
-        // Reset scene
+        function initScene() {
+            const background = new PIXI.Container();
+            const backgroundRect = new PIXI.Graphics().rect(0, 0, 800, 600).fill(0x2222aa);
+            background.addChild(backgroundRect);
+            app.stage.addChild(background);
+            car = Composites.car(350, 300, 150, 30, 30);
+            World.add(engine.world, car);
+        }
         function resetScene() {
             objects.forEach(obj => {
                 World.remove(engine.world, obj.body);
@@ -190,48 +196,44 @@
             objects.length = 0;
             initScene();
         }
-
-        // Toggle debug mode
         function toggleDebug() {
             debugMode = !debugMode;
             debugCanvas.style.display = debugMode ? 'block' : 'none';
             document.getElementById('debugBtn').classList.toggle('active', debugMode);
         }
 
-        // Mouse interaction
-        const mouse = Mouse.create(app.view);
-        const mouseConstraint = MouseConstraint.create(engine, {
-            mouse: mouse,
-            constraint: {
-                stiffness: 0.2,
-                render: { visible: false }
-            }
-        });
-        World.add(engine.world, mouseConstraint);
-
-        // Game loop
         app.ticker.add(() => {
             Engine.update(engine, 1000 / 60);
 
-            // Update Pixi sprites to match Matter bodies
             objects.forEach(obj => {
                 obj.sprite.x = obj.body.position.x;
                 obj.sprite.y = obj.body.position.y;
                 obj.sprite.rotation = obj.body.angle;
             });
 
-            // Update debug render if active
             if (debugMode) {
                 Render.world(debugRender);
             }
         });
 
-        // Controls
+        app.stage.eventMode = 'static'
+        app.stage.on('pointerdown', async (e) => {
+            const pos = e.getLocalPosition(app.stage)
+            let forceX = -1
+            if (pos.x > app.stage.width / 2) {
+                forceX = 1
+            }
+            let forceY = 0;
+            if (pos.y < app.stage.height / 2) {
+                forceY = -1;
+            }
+            Body.applyForce(car.bodies[0], car.bodies[0].position, { x: forceX * 0.1, y: forceY * 0.2 })
+        })
+
         document.getElementById('debugBtn').addEventListener('click', toggleDebug);
         document.getElementById('spawnBtn').addEventListener('click', spawnRandomObject);
         document.getElementById('resetBtn').addEventListener('click', resetScene);
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'd' || e.key === 'D') {
                 toggleDebug();
@@ -243,7 +245,6 @@
             }
         });
 
-        // Initialize
         initScene();
     </script>
 </body>
