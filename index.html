@@ -266,6 +266,10 @@
             }
         }
 
+        function jump() {
+            Body.applyForce(car.bodies[0], car.bodies[0].position, { x: 0, y: -0.2 })
+        }
+
         async function onPointerEvent(e) {
             if (pointerDown) {
                 const pos = e.getLocalPosition(app.stage)
@@ -301,6 +305,8 @@
                 input.xDirection = "right"
             } else if (e.key === 'ArrowLeft') {
                 input.xDirection = "left"
+            } else if (e.key === 'ArrowUp') {
+                jump();
             }
         });
 
