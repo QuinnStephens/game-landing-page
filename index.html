@@ -18,8 +18,8 @@
 
         #gameContainer {
             position: relative;
-            width: 800px;
-            height: 600px;
+            width: 980px;
+            height: 640px;
             margin: 0 auto;
             border: 2px solid #16213e;
         }
@@ -66,12 +66,18 @@
     <div id="gameContainer"></div>
 
     <script type="module">
+        const GAME_WIDTH = 980;
+        const GAME_HEIGHT = 640;
+        const MAX_VELOCITY_X = 10;
         const { Engine, Render, Body, Bodies, World, Events, Composites } = Matter;
+
+        let input = { xDirection: null, yDirection: null }
+        let pointerDown = false
 
         const app = new PIXI.Application()
         await app.init({
-            width: 800,
-            height: 600,
+            width: GAME_WIDTH,
+            height: GAME_HEIGHT,
             backgroundColor: 0x0f3460,
             antialias: true
         });
@@ -82,16 +88,16 @@
 
         const debugCanvas = document.createElement('canvas');
         debugCanvas.id = 'debugCanvas';
-        debugCanvas.width = 800;
-        debugCanvas.height = 600;
+        debugCanvas.width = GAME_WIDTH;
+        debugCanvas.height = GAME_HEIGHT;
         document.getElementById('gameContainer').appendChild(debugCanvas);
 
         const debugRender = Render.create({
             canvas: debugCanvas,
             engine: engine,
             options: {
-                width: 800,
-                height: 600,
+                width: GAME_WIDTH,
+                height: GAME_HEIGHT,
                 wireframes: true,
                 background: 'transparent',
                 wireframeBackground: 'transparent'
@@ -111,7 +117,7 @@
         const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
         let currentLetterIndex = 0;
 
-        const ground = Bodies.rectangle(400, 580, 800, 40, {
+        const ground = Bodies.rectangle(5000, 580, 10000, 40, {
             isStatic: true,
             friction: 0.5,
             restitution: 0.3
@@ -120,14 +126,13 @@
 
         const groundSprite = new PIXI.Graphics();
         groundSprite.beginFill(0x16213e);
-        groundSprite.drawRect(0, 560, 800, 40);
+        groundSprite.drawRect(0, 560, GAME_WIDTH, 40);
         groundSprite.endFill();
         app.stage.addChild(groundSprite);
 
-        const leftWall = Bodies.rectangle(0, 300, 40, 600, { isStatic: true });
-        const rightWall = Bodies.rectangle(800, 300, 40, 600, { isStatic: true });
-        const ceiling = Bodies.rectangle(400, 0, 800, 40, { isStatic: true });
-        World.add(engine.world, [leftWall, rightWall, ceiling]);
+        const leftWall = Bodies.rectangle(0, 300, 40, GAME_HEIGHT, { isStatic: true });
+        const rightWall = Bodies.rectangle(2000, 300, 40, GAME_HEIGHT, { isStatic: true });
+        World.add(engine.world, [leftWall, rightWall]);
 
         function createLetter(x, y, letter) {
             const size = 80;
@@ -182,7 +187,7 @@
 
         function initScene() {
             const background = new PIXI.Container();
-            const backgroundRect = new PIXI.Graphics().rect(0, 0, 800, 600).fill(0x2222aa);
+            const backgroundRect = new PIXI.Graphics().rect(0, 0, GAME_WIDTH, GAME_HEIGHT).fill(0x2222aa);
             background.addChild(backgroundRect);
             app.stage.addChild(background);
             car = Composites.car(350, 300, 150, 30, 30);
@@ -211,24 +216,46 @@
                 obj.sprite.rotation = obj.body.angle;
             });
 
+            if (input.xDirection !== null || input.yDirection !== null) {
+                moveCar(input.xDirection, input.yDirection)
+            }
+
             if (debugMode) {
                 Render.world(debugRender);
             }
         });
 
+        function moveCar(xDirection, yDirection) {
+            console.log(xDirection, yDirection)
+            let forceX = 0, forceY = 0
+            if (xDirection === "left") { forceX = -1; }
+            if (xDirection === "right") { forceX = 1; }
+            if (xDirection === "up") { forceY = -1; }
+            if (xDirection === "down") { forceY = 0; }
+
+            if (Math.abs(car.bodies[0].velocity.x) < MAX_VELOCITY_X) {
+                Body.applyForce(car.bodies[0], car.bodies[0].position, { x: forceX * 0.01, y: forceY * 0.2 })
+            }
+        }
+
+        async function onPointerEvent(e) {
+            if (pointerDown) {
+                const pos = e.getLocalPosition(app.stage)
+                const xDirection = pos.x > app.stage.width / 2 ? "right" : "left"
+                const yDirection = pos.y < app.stage.height / 2 ? "up" : "down"
+                input = { xDirection, yDirection }
+            }
+        }
+
         app.stage.eventMode = 'static'
         app.stage.on('pointerdown', async (e) => {
-            const pos = e.getLocalPosition(app.stage)
-            let forceX = -1
-            if (pos.x > app.stage.width / 2) {
-                forceX = 1
-            }
-            let forceY = 0;
-            if (pos.y < app.stage.height / 2) {
-                forceY = -1;
-            }
-            Body.applyForce(car.bodies[0], car.bodies[0].position, { x: forceX * 0.1, y: forceY * 0.2 })
+            pointerDown = true
         })
+        app.stage.on('pointerup', async (e) => {
+            pointerDown = false
+            input = { xDirection: null, yDirection: null }
+        })
+        app.stage.on('pointermove', onPointerEvent)
 
         document.getElementById('debugBtn').addEventListener('click', toggleDebug);
         document.getElementById('spawnBtn').addEventListener('click', spawnRandomObject);
@@ -242,6 +269,18 @@
                 spawnRandomObject();
             } else if (e.key === 'r' || e.key === 'R') {
                 resetScene();
+            } else if (e.key === 'ArrowRight') {
+                input.xDirection = "right"
+            } else if (e.key === 'ArrowLeft') {
+                input.xDirection = "left"
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowRight') {
+                input.xDirection = null
+            } else if (e.key === 'ArrowLeft') {
+                input.xDirection = null
             }
         });
 
