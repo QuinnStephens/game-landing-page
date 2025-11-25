@@ -82,6 +82,8 @@
             antialias: true
         });
         document.getElementById('gameContainer').appendChild(app.canvas);
+        const pixiParent = new PIXI.Container;
+        app.stage.addChild(pixiParent);
 
         const engine = Engine.create();
         engine.gravity.y = 1;
@@ -128,7 +130,7 @@
         groundSprite.beginFill(0x16213e);
         groundSprite.drawRect(0, 560, GAME_WIDTH, 40);
         groundSprite.endFill();
-        app.stage.addChild(groundSprite);
+        pixiParent.addChild(groundSprite);
 
         const leftWall = Bodies.rectangle(0, 300, 40, GAME_HEIGHT, { isStatic: true });
         const rightWall = Bodies.rectangle(2000, 300, 40, GAME_HEIGHT, { isStatic: true });
@@ -169,7 +171,7 @@
             text.anchor.set(0.5);
             container.addChild(text);
 
-            app.stage.addChild(container);
+            pixiParent.addChild(container);
             World.add(engine.world, body);
 
             objects.push({ body, sprite: container });
@@ -189,7 +191,7 @@
             const background = new PIXI.Container();
             const backgroundRect = new PIXI.Graphics().rect(0, 0, GAME_WIDTH, GAME_HEIGHT).fill(0x2222aa);
             background.addChild(backgroundRect);
-            app.stage.addChild(background);
+            pixiParent.addChild(background);
             car = Composites.car(350, 300, 150, 30, 30);
             World.add(engine.world, car);
         }
@@ -221,11 +223,36 @@
             }
 
             Render.lookAt(debugRender, car.bodies, { x: 400, y: 400 }, true)
+            syncPixiWithMatter(pixiParent, debugRender)
 
             if (debugMode) {
                 Render.world(debugRender);
             }
         });
+
+        function getPixiTransform(matterRender) {
+            const bounds = matterRender.bounds;
+            const options = matterRender.options;
+
+            const scaleX = options.width / (bounds.max.x - bounds.min.x);
+            const scaleY = options.height / (bounds.max.y - bounds.min.y);
+
+            return {
+                scale: Math.min(scaleX, scaleY),
+                offsetX: -bounds.min.x,
+                offsetY: -bounds.min.y
+            };
+        }
+
+        function syncPixiWithMatter(pixiContainer, matterRender) {
+            const transform = getPixiTransform(matterRender);
+
+            pixiContainer.scale.set(transform.scale);
+            pixiContainer.position.set(
+                transform.offsetX * transform.scale,
+                transform.offsetY * transform.scale
+            );
+        }
 
         function moveCar(xDirection, yDirection) {
             let forceX = 0, forceY = 0
