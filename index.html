@@ -185,17 +185,31 @@
             currentLetterIndex = (currentLetterIndex + 1) % alphabet.length;
         }
 
+        async function addCar() {
+            car = Composites.car(350, 300, 150, 30, 30);
+            World.add(engine.world, car);
+            pixiParent.addChild(carContainer);
+            const bearTexture = await loadTexture("bear-char");
+            const bearSprite = new PIXI.Sprite(bearTexture);
+            bearSprite.scale = 0.4;
+            bearSprite.position.x = -140;
+            bearSprite.position.y = -320;
+            carContainer.addChild(bearSprite);
+            carContainer.anchor.set(0.5, 0.5);
+        }
+
         let car;
+        const carContainer = new PIXI.Container();
 
         function initScene() {
             const background = new PIXI.Container();
             const backgroundRect = new PIXI.Graphics().rect(0, 0, GAME_WIDTH, GAME_HEIGHT).fill(0x2222aa);
             background.addChild(backgroundRect);
             pixiParent.addChild(background);
-            car = Composites.car(350, 300, 150, 30, 30);
-            World.add(engine.world, car);
+            addCar();
         }
         function resetScene() {
+            input = { xDirection: null, yDirection: null }
             objects.forEach(obj => {
                 World.remove(engine.world, obj.body);
                 app.stage.removeChild(obj.sprite);
@@ -221,6 +235,7 @@
             if (input.xDirection !== null || input.yDirection !== null) {
                 moveCar(input.xDirection, input.yDirection)
             }
+            renderCar();
 
             Render.lookAt(debugRender, car.bodies, { x: 400, y: 400 }, true)
             syncPixiWithMatter(pixiParent, debugRender)
@@ -264,6 +279,12 @@
             if (Math.abs(car.bodies[0].velocity.x) < MAX_VELOCITY_X) {
                 Body.applyForce(car.bodies[0], car.bodies[0].position, { x: forceX * 0.01, y: forceY * 0.2 })
             }
+        }
+
+        function renderCar() {
+            carContainer.position.x = car.bodies[0].position.x;
+            carContainer.position.y = car.bodies[0].position.y;
+            carContainer.rotation = car.bodies[0].angle;
         }
 
         function jump() {
