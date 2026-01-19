@@ -74,7 +74,8 @@
         let input = { xDirection: null, yDirection: null }
         let pointerDown = false
         let playedInitialAudio = false
-        let aAudio = new Audio('public/audio/a-block.wav');
+        let playedABlockAudio = false
+        let playedABlock2Audio = false
 
         const app = new PIXI.Application()
         await app.init({
@@ -93,7 +94,16 @@
         Events.on(engine, "collisionStart", (event) => {
             event.pairs.forEach(({ bodyA, bodyB }) => {
                 if ((bodyA.label == "Circle Body" && bodyB.label == "letter-A") || (bodyB.label == "Circle Body" && bodyA.label == "letter-A")) {
-                    aAudio.play();
+                    if (!playedInitialAudio) {
+                        return;
+                    }
+                    if (!playedABlockAudio) {
+                        playAudio('a-block');
+                        playedABlockAudio = true;
+                    } else if (!playedABlock2Audio) {
+                        playAudio('a-block-2');
+                        playedABlock2Audio = true;
+                    }
                 }
             })
         });
