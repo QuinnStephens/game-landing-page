@@ -73,6 +73,8 @@
 
         let input = { xDirection: null, yDirection: null }
         let pointerDown = false
+        let playedInitialAudio = false
+        let aAudio = new Audio('public/audio/a-block.wav');
 
         const app = new PIXI.Application()
         await app.init({
@@ -87,6 +89,14 @@
 
         const engine = Engine.create();
         engine.gravity.y = 1;
+
+        Events.on(engine, "collisionStart", (event) => {
+            event.pairs.forEach(({ bodyA, bodyB }) => {
+                if ((bodyA.label == "Circle Body" && bodyB.label == "letter-A") || (bodyB.label == "Circle Body" && bodyA.label == "letter-A")) {
+                    aAudio.play();
+                }
+            })
+        });
 
         const debugCanvas = document.createElement('canvas');
         debugCanvas.id = 'debugCanvas';
@@ -173,6 +183,7 @@
 
             pixiParent.addChild(container);
             World.add(engine.world, body);
+            body.label = "letter-" + letter;
 
             objects.push({ body, sprite: container });
         }
@@ -188,6 +199,7 @@
         async function addCar() {
             car = Composites.car(350, 300, 150, 30, 30);
             World.add(engine.world, car);
+            car.label = "car";
             pixiParent.addChild(carContainer);
             const bearTexture = await loadTexture("bear-char");
             const bearSprite = new PIXI.Sprite(bearTexture);
@@ -195,7 +207,6 @@
             bearSprite.position.x = -140;
             bearSprite.position.y = -320;
             carContainer.addChild(bearSprite);
-            carContainer.anchor.set(0.5, 0.5);
         }
 
         let car;
@@ -287,6 +298,16 @@
             carContainer.rotation = car.bodies[0].angle;
         }
 
+        function playAudio(name) {
+            const clip = new Audio(`public/audio/${name}.wav`);
+            clip.play();
+        }
+
+        function playInitialAudio() {
+            playAudio('howdoigetoutofhere');
+            playedInitialAudio = true;
+        }
+
         function jump() {
             Body.applyForce(car.bodies[0], car.bodies[0].position, { x: 0, y: -0.2 })
         }
@@ -302,6 +323,9 @@
 
         app.stage.eventMode = 'static'
         app.stage.on('pointerdown', async (e) => {
+            if (!playedInitialAudio) {
+                playInitialAudio();
+            }
             pointerDown = true
         })
         app.stage.on('pointerup', async (e) => {
@@ -315,6 +339,9 @@
         document.getElementById('resetBtn').addEventListener('click', resetScene);
 
         document.addEventListener('keydown', (e) => {
+            if (!playedInitialAudio) {
+                playInitialAudio();
+            }
             if (e.key === 'd' || e.key === 'D') {
                 toggleDebug();
             } else if (e.key === ' ') {
