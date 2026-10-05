@@ -9,8 +9,32 @@ A Pixi + Matter.js physics game. It's a single static `index.html` with assets i
 | Drive left / right | Arrow keys | Left stick or D-pad |
 | Jump | Up arrow | A or D-pad up |
 | Spawn a letter block | Space | X |
+| Creative mode on / off | E | Y |
 | Toggle debug view | D | Select (View) |
-| Reset | R | Start (Menu) |
+| Reset the bear (your build stays) | R | Start (Menu) |
+| Full screen on / off | F | |
+
+The game fills the browser window, and everything (including the buttons along the top) is drawn by Pixi on one canvas.
+
+The bear is fenced in: walls on both sides, the ground below and a cloud ceiling above.
+
+## Creative mode
+
+Creative mode pauses physics so you can build. A yellow square marks the cursor, and the bar at the bottom shows the piece you're placing.
+
+| Action | Keyboard | Controller | Mouse |
+| --- | --- | --- | --- |
+| Move the cursor | Arrow keys | Left stick or D-pad | Move the mouse |
+| Place the piece, or pick up / drop the block under the cursor | Space or Enter | A | Click (drag blocks to move them) |
+| Pick up / drop anything, background pieces included | G | X | Shift-drag |
+| Delete | X, Delete or Backspace | B | Right-click |
+| Change piece | Q / W | LB / RB | Mouse wheel, or click the bar |
+| Turn a piece | Z | LT | |
+| Pin / unpin a block | P | RT | |
+
+Pieces you place are pinned, so they stay where you put them when you go back to playing. Unpinned blocks (marked with an arrow) fall and tumble like the letter blocks. Background pieces (wallpaper, door, window, lamp, plant, picture, rug) sit behind the bear, so it can drive in front of them. If a block lands on the bear, the bear is moved to the nearest free spot.
+
+Your build is saved in the browser and comes back next time. **Clear Built Blocks** wipes it (press it twice).
 
 ## Running locally
 

@@ -4,74 +4,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixi + Matter Physics Demo</title>
+    <title>Bear Kingdom</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.13.0/pixi.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <style>
+        html,
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
+            width: 100%;
+            height: 100%;
             overflow: hidden;
             background: #1a1a2e;
-            font-family: Arial, sans-serif;
-            color: white;
         }
 
-        #gameContainer {
-            position: relative;
-            width: 980px;
-            height: 640px;
-            margin: 0 auto;
-            border: 2px solid #16213e;
-            transform-origin: top center;
-        }
-
-        #debugCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none;
-        }
-
-        .controls {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        button {
-            background: #0f3460;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            margin: 0 5px;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        button:hover {
-            background: #16213e;
-        }
-
-        button.active {
-            background: #e94560;
+        canvas {
+            display: block;
         }
     </style>
 </head>
 
 <body>
-    <div class="controls">
-        <button id="debugBtn">Toggle Debug (D / Select)</button>
-        <button id="spawnBtn">Spawn Random Object (Space / X)</button>
-        <button id="resetBtn">Reset Scene (R / Start)</button>
-    </div>
-    <div id="gameContainer"></div>
-
     <script type="module">
-        const GAME_WIDTH = 980;
-        const GAME_HEIGHT = 640;
+        // The game fills the window. The same height of world is always visible, so wider screens see further sideways
+        const VIEW_HEIGHT = 860;
+        const GRID = 40;
+
+        // The bear is fenced inside this box: walls on the sides, the ground below and a cloud ceiling above
+        const LEVEL_LEFT = 0;
+        const LEVEL_RIGHT = 2400;
+        const CEILING_Y = -720;
+        const GROUND_Y = 560;
+        const BEAR_START_X = 400;
+
         const MAX_VELOCITY_X = 10;
-        const { Engine, Render, Body, Bodies, World, Events, Composites } = Matter;
+        const MAX_RISE_SPEED = 18;
+        const SAVE_KEY = 'bear-kingdom-build-v1';
+        const { Engine, Body, Bodies, Composite, Constraint, Query, Vertices, Events } = Matter;
 
         let input = { xDirection: null, yDirection: null }
         let gamepadXDirection = null
@@ -83,14 +52,35 @@
 
         const app = new PIXI.Application()
         await app.init({
-            width: GAME_WIDTH,
-            height: GAME_HEIGHT,
-            backgroundColor: 0x0f3460,
-            antialias: true
+            resizeTo: window,
+            backgroundColor: 0x8fd3f4,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1,
+            autoDensity: true
         });
-        document.getElementById('gameContainer').appendChild(app.canvas);
-        const pixiParent = new PIXI.Container;
+        document.body.appendChild(app.canvas);
+
+        function zoom() {
+            return app.screen.height / VIEW_HEIGHT;
+        }
+        function viewWidth() {
+            return app.screen.width / zoom();
+        }
+
+        // World layers, back to front
+        const pixiParent = new PIXI.Container();
+        const backgroundLayer = new PIXI.Container();
+        const decorLayer = new PIXI.Container();
+        const blockLayer = new PIXI.Container();
+        const carLayer = new PIXI.Container();
+        const editorLayer = new PIXI.Container();
+        const debugLayer = new PIXI.Graphics();
+        pixiParent.addChild(backgroundLayer, decorLayer, blockLayer, carLayer, editorLayer, debugLayer);
         app.stage.addChild(pixiParent);
+
+        // Screen-space HUD drawn on top of the world
+        const hud = new PIXI.Container();
+        app.stage.addChild(hud);
 
         const engine = Engine.create();
         engine.gravity.y = 1;
@@ -112,188 +102,597 @@
             })
         });
 
-        const debugCanvas = document.createElement('canvas');
-        debugCanvas.id = 'debugCanvas';
-        debugCanvas.width = GAME_WIDTH;
-        debugCanvas.height = GAME_HEIGHT;
-        document.getElementById('gameContainer').appendChild(debugCanvas);
-
-        const debugRender = Render.create({
-            canvas: debugCanvas,
-            engine: engine,
-            options: {
-                width: GAME_WIDTH,
-                height: GAME_HEIGHT,
-                wireframes: true,
-                background: 'transparent',
-                wireframeBackground: 'transparent'
-            }
-        });
-
         async function loadTexture(name) {
             const path = "public/img/" + name + ".png";
-            const texture = await PIXI.Assets.load(path);
-            texture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-            return texture;
+            return await PIXI.Assets.load(path);
         }
 
-        let debugMode = true;
+        let debugMode = false;
 
-        const objects = [];
+        // Wireframes of every physics shape, for checking hitboxes
+        function drawDebug() {
+            debugLayer.clear();
+            if (!debugMode) return;
+            Composite.allBodies(engine.world).forEach(body => {
+                const parts = body.parts.length > 1 ? body.parts.slice(1) : [body];
+                parts.forEach(part => {
+                    debugLayer.poly(part.vertices.flatMap(v => [v.x, v.y]));
+                    debugLayer.stroke({ width: 2 / zoom(), color: body.isSensor ? 0x00ffff : body.isStatic ? 0xff66cc : 0xffffff, alpha: 0.9 });
+                });
+            });
+        }
+
+        // ---------- Level: sky, ground and the fence around the play area ----------
+
+        const ground = Bodies.rectangle((LEVEL_LEFT + LEVEL_RIGHT) / 2, GROUND_Y + 200, LEVEL_RIGHT - LEVEL_LEFT + 800, 400, {
+            isStatic: true,
+            friction: 0.5,
+            restitution: 0.3,
+            label: 'ground'
+        });
+        const levelHeight = GROUND_Y - CEILING_Y;
+        const leftWall = Bodies.rectangle(LEVEL_LEFT - 100, CEILING_Y + levelHeight / 2, 200, levelHeight + 800, { isStatic: true, label: 'wall' });
+        const rightWall = Bodies.rectangle(LEVEL_RIGHT + 100, CEILING_Y + levelHeight / 2, 200, levelHeight + 800, { isStatic: true, label: 'wall' });
+        const ceiling = Bodies.rectangle((LEVEL_LEFT + LEVEL_RIGHT) / 2, CEILING_Y - 200, LEVEL_RIGHT - LEVEL_LEFT + 800, 400, { isStatic: true, label: 'ceiling' });
+        Composite.add(engine.world, [ground, leftWall, rightWall, ceiling]);
+
+        function drawLevel() {
+            const left = LEVEL_LEFT - 600, right = LEVEL_RIGHT + 600;
+            const sky = new PIXI.Graphics();
+            const skyTop = CEILING_Y - 300, skyBottom = GROUND_Y;
+            const bands = 16;
+            for (let i = 0; i < bands; i++) {
+                const t = i / (bands - 1);
+                const color = mixColor(0x4fa8e8, 0xc9efff, t);
+                const y = skyTop + (skyBottom - skyTop) * i / bands;
+                sky.rect(left, y, right - left, (skyBottom - skyTop) / bands + 1).fill(color);
+            }
+            sky.circle(LEVEL_RIGHT - 300, CEILING_Y + 220, 70).fill({ color: 0xfff6a0, alpha: 0.5 });
+            sky.circle(LEVEL_RIGHT - 300, CEILING_Y + 220, 52).fill(0xffe45c);
+            backgroundLayer.addChild(sky);
+
+            const hills = new PIXI.Graphics();
+            for (let x = left; x < right; x += 340) {
+                const r = 220 + ((x * 7) % 90);
+                hills.circle(x, GROUND_Y + 60, r).fill(0x7cc96b);
+            }
+            for (let x = left + 170; x < right; x += 420) {
+                hills.circle(x, GROUND_Y + 80, 180).fill(0x6ab85a);
+            }
+            backgroundLayer.addChild(hills);
+
+            // Clouds float along the ceiling so the top of the level looks like a soft limit
+            const clouds = new PIXI.Graphics();
+            for (let x = left; x < right; x += 110) {
+                const y = CEILING_Y - 30 + ((x * 13) % 40);
+                clouds.circle(x, y, 60).fill(0xffffff);
+                clouds.circle(x + 50, y + 15, 45).fill(0xf4f8ff);
+            }
+            clouds.rect(left, CEILING_Y - 400, right - left, 380).fill(0xffffff);
+            for (let x = LEVEL_LEFT + 200; x < LEVEL_RIGHT; x += 500) {
+                const y = CEILING_Y + 150 + ((x * 3) % 160);
+                clouds.ellipse(x, y, 70, 26).fill({ color: 0xffffff, alpha: 0.85 });
+                clouds.ellipse(x + 40, y - 18, 45, 24).fill({ color: 0xffffff, alpha: 0.85 });
+            }
+            backgroundLayer.addChild(clouds);
+
+            const groundG = new PIXI.Graphics();
+            groundG.rect(left, GROUND_Y, right - left, 400).fill(0x8b5a2b);
+            groundG.rect(left, GROUND_Y, right - left, 18).fill(0x5cb85c);
+            for (let x = left; x < right; x += 24) {
+                groundG.poly([x, GROUND_Y + 18, x + 12, GROUND_Y + 26, x + 24, GROUND_Y + 18]).fill(0x5cb85c);
+            }
+            for (let x = left + 15; x < right; x += 70) {
+                groundG.ellipse(x, GROUND_Y + 50 + ((x * 5) % 40), 9, 6).fill(0x734a22);
+            }
+            backgroundLayer.addChild(groundG);
+
+            // Tall fences on both sides of the play area
+            const fence = new PIXI.Graphics();
+            for (const edge of [LEVEL_LEFT, LEVEL_RIGHT]) {
+                const x = edge === LEVEL_LEFT ? edge - 60 : edge;
+                fence.rect(x, CEILING_Y - 40, 60, levelHeight + 40).fill(0xc68a4a);
+                for (let y = CEILING_Y; y < GROUND_Y; y += 80) {
+                    fence.rect(x, y, 60, 14).fill(0x9c6633);
+                }
+                fence.rect(x, CEILING_Y - 40, 60, levelHeight + 40).stroke({ width: 4, color: 0x6e4420 });
+            }
+            backgroundLayer.addChild(fence);
+        }
+
+        // ---------- Placeholder tiles ----------
+
+        function mixColor(a, b, t) {
+            const ch = (c, s) => (c >> s) & 255;
+            const m = (s) => Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t);
+            return (m(16) << 16) | (m(8) << 8) | m(0);
+        }
+        function shade(color, amount) {
+            return amount < 0 ? mixColor(color, 0x000000, -amount) : mixColor(color, 0xffffff, amount);
+        }
+
+        function colorBlock(color) {
+            return (g, w, h) => {
+                const x = -w / 2, y = -h / 2;
+                g.roundRect(x, y, w, h, 8).fill(shade(color, -0.35));
+                g.roundRect(x + 4, y + 3, w - 8, h - 10, 6).fill(color);
+                g.roundRect(x + 10, y + 8, w - 20, 8, 4).fill({ color: 0xffffff, alpha: 0.4 });
+                g.circle(x + w - 16, y + h - 20, 5).fill({ color: 0xffffff, alpha: 0.3 });
+            };
+        }
+
+        function drawBrick(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x, y, w, h).fill(0xd8cfc4);
+            const rows = 4, bh = h / rows, bw = w / 2;
+            for (let r = 0; r < rows; r++) {
+                const offset = r % 2 ? -bw / 2 : 0;
+                for (let bx = x + offset; bx < x + w; bx += bw) {
+                    const l = Math.max(bx, x), rr = Math.min(bx + bw, x + w);
+                    g.rect(l + 2, y + r * bh + 2, rr - l - 4, bh - 4).fill(r % 2 ? 0xb4472c : 0xc4562f);
+                }
+            }
+        }
+
+        function drawPlank(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 4).fill(0x9c6633);
+            g.roundRect(x + 2, y + 2, w - 4, h - 6, 3).fill(0xc68a4a);
+            g.moveTo(x + 10, y + h * 0.35).lineTo(x + w * 0.45, y + h * 0.35).stroke({ width: 2, color: 0xa86f38 });
+            g.moveTo(x + w * 0.55, y + h * 0.6).lineTo(x + w - 12, y + h * 0.6).stroke({ width: 2, color: 0xa86f38 });
+            g.circle(x + 8, y + h / 2, 2.5).fill(0x555555);
+            g.circle(x + w - 8, y + h / 2, 2.5).fill(0x555555);
+        }
+
+        function drawStone(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 6).fill(0x6f7b87);
+            g.roundRect(x + 3, y + 3, w - 6, h - 8, 5).fill(0x95a3b0);
+            g.ellipse(x + w * 0.3, y + h * 0.35, 12, 8).fill(0x7f8c99);
+            g.ellipse(x + w * 0.68, y + h * 0.62, 15, 9).fill(0x7f8c99);
+            g.ellipse(x + w * 0.35, y + h * 0.75, 8, 5).fill(0x7f8c99);
+        }
+
+        function drawGlass(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x, y, w, h).fill({ color: 0xaee4ff, alpha: 0.55 });
+            g.rect(x, y, w, h).stroke({ width: 3, color: 0xe8f8ff });
+            g.moveTo(x + 14, y + h - 14).lineTo(x + w - 30, y + 14).stroke({ width: 4, color: 0xffffff, alpha: 0.8 });
+            g.moveTo(x + 30, y + h - 12).lineTo(x + w - 14, y + 26).stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+        }
+
+        function drawRoof(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.poly([x, y + h, 0, y, x + w, y + h]).fill(0xc0392b);
+            for (let i = 1; i < 4; i++) {
+                const yy = y + h * i / 4;
+                const half = (w / 2) * i / 4;
+                g.moveTo(-half, yy).lineTo(half, yy).stroke({ width: 2, color: 0x962d22 });
+            }
+            g.poly([x, y + h, 0, y, x + w, y + h]).stroke({ width: 3, color: 0x7b241c });
+        }
+
+        function drawWallpaper(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x, y, w, h).fill(0xf6e3c6);
+            for (let sx = x + 10; sx < x + w; sx += 20) {
+                g.rect(sx, y, 8, h).fill(0xf0d5ab);
+            }
+            for (let sy = y + 20; sy < y + h; sy += 40) {
+                for (let sx = x + 20; sx < x + w; sx += 40) {
+                    g.circle(sx, sy, 4).fill(0xe8a0b4);
+                }
+            }
+        }
+
+        function drawDoor(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 6).fill(0x6e4420);
+            g.roundRect(x + 5, y + 5, w - 10, h - 5, 4).fill(0x9b5e34);
+            g.roundRect(x + 14, y + 16, w - 28, h * 0.32, 4).fill(0x8a5230);
+            g.roundRect(x + 14, y + h * 0.5, w - 28, h * 0.4, 4).fill(0x8a5230);
+            g.circle(x + w - 16, y + h * 0.48, 5).fill(0xf5c542);
+        }
+
+        function drawWindow(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 4).fill(0xffffff);
+            g.rect(x + 7, y + 7, w - 14, h - 14).fill(0x8fd3f4);
+            g.rect(-2, y + 7, 4, h - 14).fill(0xffffff);
+            g.rect(x + 7, -2, w - 14, 4).fill(0xffffff);
+            g.poly([x + 7, y + 7, x + 24, y + 7, x + 12, y + h - 7, x + 7, y + h - 7]).fill(0xf48fb1);
+            g.poly([x + w - 7, y + 7, x + w - 24, y + 7, x + w - 12, y + h - 7, x + w - 7, y + h - 7]).fill(0xf48fb1);
+        }
+
+        function drawBed(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, 22, h, 6).fill(0x8b5a2b);
+            g.roundRect(x + w - 14, y + h * 0.35, 14, h * 0.65, 4).fill(0x8b5a2b);
+            g.roundRect(x + 14, y + h * 0.55, w - 20, h * 0.25, 4).fill(0xa0522d);
+            g.roundRect(x + 18, y + h * 0.35, w - 30, h * 0.24, 6).fill(0xffffff);
+            g.roundRect(x + 62, y + h * 0.3, w - 76, h * 0.32, 6).fill(0x5b8def);
+            g.roundRect(x + 62, y + h * 0.3, w - 76, 6, 3).fill(0x8db0ff);
+            g.roundRect(x + 24, y + h * 0.2, 34, 18, 8).fill(0xfdfdfd).stroke({ width: 2, color: 0xcccccc });
+            g.rect(x + 2, y + h - 10, 12, 10).fill(0x5c3a1a);
+            g.rect(x + w - 14, y + h - 10, 12, 10).fill(0x5c3a1a);
+        }
+
+        function drawCouch(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            const c = 0xe0607e;
+            g.roundRect(x + 10, y + 8, w - 20, h * 0.5, 12).fill(shade(c, -0.1));
+            g.roundRect(x + 16, y + h * 0.45, w - 32, h * 0.32, 8).fill(shade(c, 0.15));
+            g.moveTo(0, y + h * 0.48).lineTo(0, y + h * 0.74).stroke({ width: 2, color: shade(c, -0.2) });
+            g.roundRect(x, y + h * 0.3, 26, h * 0.5, 10).fill(shade(c, -0.25));
+            g.roundRect(x + w - 26, y + h * 0.3, 26, h * 0.5, 10).fill(shade(c, -0.25));
+            g.rect(x + 6, y + h * 0.78, w - 12, 8).fill(shade(c, -0.35));
+            g.rect(x + 10, y + h - 10, 8, 10).fill(0x5c3a1a);
+            g.rect(x + w - 18, y + h - 10, 8, 10).fill(0x5c3a1a);
+        }
+
+        function drawTable(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(-10, y + 2, 20, 24, 5).fill(0x7fb3d5);
+            g.circle(-6, y + 2, 7).fill(0xff6b81);
+            g.circle(6, y + 4, 7).fill(0xffd93d);
+            g.roundRect(x, y + 24, w, 14, 4).fill(0xb07040);
+            g.rect(x + 10, y + 38, 12, h - 38).fill(0x8b5a2b);
+            g.rect(x + w - 22, y + 38, 12, h - 38).fill(0x8b5a2b);
+            g.rect(x + 10, y + 38, w - 20, 8).fill(0x9c6633);
+        }
+
+        function drawChair(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x + 10, y, 12, h).fill(0xb07040);
+            g.rect(x + 22, y + 10, 6, h * 0.4).fill(0xc68a4a);
+            g.rect(x + 22, y + 26, 6, 8).fill(0xb07040);
+            g.roundRect(x + 10, y + h * 0.5, w - 20, 12, 3).fill(0xc68a4a);
+            g.rect(x + w - 22, y + h * 0.5 + 12, 12, h * 0.5 - 12).fill(0xb07040);
+        }
+
+        function drawFridge(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 8).fill(0xf2f4f7).stroke({ width: 3, color: 0xb0b8c0 });
+            g.moveTo(x + 2, y + h * 0.36).lineTo(x + w - 2, y + h * 0.36).stroke({ width: 3, color: 0xb0b8c0 });
+            g.roundRect(x + w - 16, y + 16, 6, 30, 3).fill(0x8a949e);
+            g.roundRect(x + w - 16, y + h * 0.42, 6, 40, 3).fill(0x8a949e);
+            g.circle(x + 18, y + h * 0.55, 6).fill(0xff6b81);
+            g.circle(x + 32, y + h * 0.6, 5).fill(0x5b8def);
+            g.rect(x + 14, y + h * 0.66, 22, 16).fill(0xfff3b0);
+        }
+
+        function drawTV(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.poly([-16, y + h - 16, 16, y + h - 16, 26, y + h, -26, y + h]).fill(0x333333);
+            g.roundRect(x, y, w, h - 14, 6).fill(0x222222);
+            g.rect(x + 6, y + 6, w - 12, h - 26).fill(0x3fa9f5);
+            g.circle(x + w - 30, y + 20, 8).fill(0xffe45c);
+            g.rect(x + 6, y + h - 34, w - 12, 14).fill(0x5cb85c);
+        }
+
+        function drawBookshelf(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x, y, w, h).fill(0x8b5a2b);
+            g.rect(x + 6, y + 6, w - 12, h - 12).fill(0x5c3a1a);
+            const shelves = 4, sh = (h - 12) / shelves;
+            const colors = [0xe74c3c, 0xf1c40f, 0x3498db, 0x2ecc71, 0x9b59b6, 0xe67e22];
+            let ci = 0;
+            for (let s = 0; s < shelves; s++) {
+                const sy = y + 6 + s * sh;
+                let bx = x + 8;
+                while (bx < x + w - 16) {
+                    const bw = 7 + (ci % 3) * 2;
+                    const bh = sh - 12 - (ci % 4) * 3;
+                    g.rect(bx, sy + sh - 6 - bh, bw, bh).fill(colors[ci % colors.length]);
+                    bx += bw + 2;
+                    ci++;
+                }
+                g.rect(x + 6, sy + sh - 6, w - 12, 6).fill(0x8b5a2b);
+            }
+        }
+
+        function drawBathtub(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            for (const [bx, by, r] of [[-40, y + 22, 12], [-20, y + 14, 15], [6, y + 18, 13], [30, y + 12, 16], [52, y + 22, 11]]) {
+                g.circle(bx, by, r).fill(0xe8f6ff).stroke({ width: 2, color: 0xbfe3f5 });
+            }
+            g.rect(x + 12, y + 4, 6, 30).fill(0xa0a8b0);
+            g.rect(x + 12, y + 4, 22, 6).fill(0xa0a8b0);
+            g.roundRect(x, y + h * 0.35, w, h * 0.5, 18).fill(0xffffff).stroke({ width: 3, color: 0xb0b8c0 });
+            g.circle(x + 22, y + h - 6, 6).fill(0xf5c542);
+            g.circle(x + w - 22, y + h - 6, 6).fill(0xf5c542);
+        }
+
+        function drawToilet(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x + 4, y, 26, h * 0.55, 4).fill(0xffffff).stroke({ width: 2, color: 0xb0b8c0 });
+            g.roundRect(x + 22, y + h * 0.65, 30, h * 0.35, 4).fill(0xffffff).stroke({ width: 2, color: 0xb0b8c0 });
+            g.roundRect(x + 10, y + h * 0.42, w - 14, h * 0.3, 14).fill(0xffffff).stroke({ width: 2, color: 0xb0b8c0 });
+            g.rect(x + 8, y + 6, 10, 4).fill(0xa0a8b0);
+        }
+
+        function drawStove(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.roundRect(x, y, w, h, 6).fill(0xdfe6ec).stroke({ width: 2, color: 0x9aa6b2 });
+            g.rect(x, y, w, 14).fill(0x444444);
+            g.ellipse(x + 20, y + 7, 12, 4).fill(0xff5733);
+            g.ellipse(x + w - 20, y + 7, 12, 4).fill(0xff5733);
+            g.circle(x + 18, y + 24, 4).fill(0x555555);
+            g.circle(x + 40, y + 24, 4).fill(0x555555);
+            g.circle(x + 62, y + 24, 4).fill(0x555555);
+            g.roundRect(x + 10, y + 36, w - 20, h - 46, 4).fill(0x333333);
+            g.rect(x + 16, y + 42, w - 32, 6).fill(0x666666);
+        }
+
+        function drawLamp(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.circle(0, y + 28, 22).fill({ color: 0xfff6a0, alpha: 0.35 });
+            g.poly([-10, y, 10, y, 18, y + 32, -18, y + 32]).fill(0xffd93d);
+            g.rect(-3, y + 32, 6, h - 40).fill(0x666666);
+            g.ellipse(0, y + h - 5, 16, 5).fill(0x444444);
+        }
+
+        function drawPlant(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.circle(-12, y + 22, 16).fill(0x2e8b57);
+            g.circle(12, y + 18, 17).fill(0x3cb371);
+            g.circle(0, y + 8, 14).fill(0x48c774);
+            g.circle(0, y + 34, 18).fill(0x2e8b57);
+            g.poly([-22, y + h * 0.55, 22, y + h * 0.55, 16, y + h, -16, y + h]).fill(0xd2691e);
+            g.rect(-24, y + h * 0.52, 48, 8).fill(0xb85a1a);
+        }
+
+        function drawPicture(g, w, h) {
+            const x = -w / 2, y = -h / 2;
+            g.rect(x + 6, y + 6, w - 12, h - 12).fill(0xd4a017);
+            g.rect(x + 12, y + 12, w - 24, h - 24).fill(0xbfe9ff);
+            g.circle(x + w - 24, y + 24, 7).fill(0xffe45c);
+            g.ellipse(0, y + h - 12, w / 2 - 12, 16).fill(0x5cb85c);
+        }
+
+        function drawRug(g, w, h) {
+            g.ellipse(0, 0, w / 2, h / 2).fill(0xc0392b);
+            g.ellipse(0, 0, w / 2 - 8, h / 2 - 6).fill(0xe67e22);
+            g.ellipse(0, 0, w / 2 - 20, h / 2 - 11).fill(0xf1c40f);
+        }
+
+        // solid: false tiles are background decorations the bear drives in front of
+        const TILES = [
+            { id: 'red', name: 'Red Block', w: 80, h: 80, draw: colorBlock(0xe81416) },
+            { id: 'orange', name: 'Orange Block', w: 80, h: 80, draw: colorBlock(0xffa500) },
+            { id: 'yellow', name: 'Yellow Block', w: 80, h: 80, draw: colorBlock(0xfaeb36) },
+            { id: 'green', name: 'Green Block', w: 80, h: 80, draw: colorBlock(0x79c314) },
+            { id: 'blue', name: 'Blue Block', w: 80, h: 80, draw: colorBlock(0x487de7) },
+            { id: 'purple', name: 'Purple Block', w: 80, h: 80, draw: colorBlock(0x70369d) },
+            { id: 'pink', name: 'Pink Block', w: 80, h: 80, draw: colorBlock(0xff7eb6) },
+            { id: 'small', name: 'Little Block', w: 40, h: 40, draw: colorBlock(0x2ec4b6) },
+            { id: 'brick', name: 'Brick Wall', w: 80, h: 80, draw: drawBrick },
+            { id: 'plank', name: 'Wood Plank', w: 160, h: 40, draw: drawPlank },
+            { id: 'stone', name: 'Stone', w: 80, h: 80, draw: drawStone },
+            { id: 'glass', name: 'Glass', w: 80, h: 80, draw: drawGlass },
+            { id: 'roof', name: 'Roof', w: 160, h: 80, shape: 'roof', draw: drawRoof },
+            { id: 'wallpaper', name: 'Wallpaper', w: 80, h: 80, solid: false, draw: drawWallpaper },
+            { id: 'door', name: 'Door', w: 80, h: 160, solid: false, draw: drawDoor },
+            { id: 'window', name: 'Window', w: 80, h: 80, solid: false, draw: drawWindow },
+            { id: 'bed', name: 'Bed', w: 160, h: 80, draw: drawBed },
+            { id: 'couch', name: 'Couch', w: 160, h: 80, draw: drawCouch },
+            { id: 'table', name: 'Table', w: 160, h: 80, draw: drawTable },
+            { id: 'chair', name: 'Chair', w: 80, h: 80, draw: drawChair },
+            { id: 'fridge', name: 'Fridge', w: 80, h: 160, draw: drawFridge },
+            { id: 'stove', name: 'Stove', w: 80, h: 80, draw: drawStove },
+            { id: 'tv', name: 'TV', w: 120, h: 80, draw: drawTV },
+            { id: 'bookshelf', name: 'Bookshelf', w: 80, h: 160, draw: drawBookshelf },
+            { id: 'bathtub', name: 'Bathtub', w: 160, h: 80, draw: drawBathtub },
+            { id: 'toilet', name: 'Toilet', w: 80, h: 80, draw: drawToilet },
+            { id: 'lamp', name: 'Lamp', w: 40, h: 120, solid: false, draw: drawLamp },
+            { id: 'plant', name: 'Plant', w: 80, h: 80, solid: false, draw: drawPlant },
+            { id: 'picture', name: 'Picture', w: 80, h: 80, solid: false, draw: drawPicture },
+            { id: 'rug', name: 'Rug', w: 160, h: 40, solid: false, draw: drawRug },
+        ].map(tile => ({ solid: true, shape: 'rect', ...tile }));
+        const TILE_BY_ID = Object.fromEntries(TILES.map(tile => [tile.id, tile]));
+        const LETTER_TILE = { id: 'letter', name: 'Letter Block', w: 80, h: 80, solid: true, shape: 'rect' };
+        const LETTER_COLORS = [0xE81416, 0xFFA500, 0xFAEB36, 0x79C314, 0x487DE7, 0x4B369D, 0x70369D];
+
+        function makeTileGraphic(tile, letter) {
+            const g = new PIXI.Graphics();
+            if (tile === LETTER_TILE) {
+                const size = tile.w;
+                const color = LETTER_COLORS[Math.floor(Math.random() * LETTER_COLORS.length)];
+                g.roundRect(-size / 2, -size / 2, size, size, 8).fill(color);
+                const container = new PIXI.Container();
+                container.addChild(g);
+                const text = new PIXI.Text({
+                    text: letter,
+                    style: { fontFamily: 'Arial', fontSize: 32, fontWeight: 'bold', fill: 0xFFFFFF, align: 'center', dropShadow: true }
+                });
+                text.anchor.set(0.5);
+                container.addChild(text);
+                return container;
+            }
+            tile.draw(g, tile.w, tile.h);
+            return g;
+        }
+
+        // ---------- Blocks ----------
+
+        const blocks = [];
         const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
         let currentLetterIndex = 0;
 
-        const ground = Bodies.rectangle(5000, 580, 10000, 40, {
-            isStatic: true,
-            friction: 0.5,
-            restitution: 0.3
-        });
-        World.add(engine.world, ground);
+        const QUARTER = Math.PI / 2;
+        function rotateVec(v, angle) {
+            const c = Math.cos(angle), s = Math.sin(angle);
+            return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+        }
+        function blockSize(tile, rot) {
+            return rot % 2 ? { w: tile.h, h: tile.w } : { w: tile.w, h: tile.h };
+        }
 
-        const groundSprite = new PIXI.Graphics();
-        groundSprite.beginFill(0x16213e);
-        groundSprite.drawRect(0, 560, GAME_WIDTH, 40);
-        groundSprite.endFill();
-        pixiParent.addChild(groundSprite);
+        function makeTileBody(tile, x, y) {
+            const options = { friction: 0.6, restitution: 0.1, isSensor: !tile.solid, label: tile === LETTER_TILE ? 'letter' : 'tile-' + tile.id };
+            if (tile.shape === 'roof') {
+                return Bodies.trapezoid(x, y, tile.w, tile.h, 1, options);
+            }
+            return Bodies.rectangle(x, y, tile.w, tile.h, options);
+        }
 
-        const leftWall = Bodies.rectangle(0, 300, 40, GAME_HEIGHT, { isStatic: true });
-        const rightWall = Bodies.rectangle(2000, 300, 40, GAME_HEIGHT, { isStatic: true });
-        World.add(engine.world, [leftWall, rightWall]);
+        function addBlock(tile, center, rot = 0, pinned = true, letter = null) {
+            const body = makeTileBody(tile, center.x, center.y);
+            // The body's position is its centre of mass, which for a roof isn't the middle of its box
+            const offset = {
+                x: body.position.x - (body.bounds.min.x + body.bounds.max.x) / 2,
+                y: body.position.y - (body.bounds.min.y + body.bounds.max.y) / 2
+            };
+            const sprite = new PIXI.Container();
+            const graphic = makeTileGraphic(tile, letter);
+            graphic.position.set(-offset.x, -offset.y);
+            sprite.addChild(graphic);
+            const block = { tile, body, sprite, offset, rot: 0, pinned: false, letter };
+            if (letter) body.label = 'letter-' + letter;
+            (tile.solid ? blockLayer : decorLayer).addChild(sprite);
+            Composite.add(engine.world, body);
+            blocks.push(block);
+            setPinned(block, pinned || !tile.solid);
+            positionBlock(block, center, rot);
+            return block;
+        }
+
+        function removeBlock(block) {
+            Composite.remove(engine.world, block.body);
+            block.sprite.destroy({ children: true });
+            blocks.splice(blocks.indexOf(block), 1);
+        }
+
+        function setPinned(block, pinned) {
+            if (!block.tile.solid) pinned = true;
+            if (block.pinned === pinned) return;
+            block.pinned = pinned;
+            Body.setStatic(block.body, pinned);
+            Body.setVelocity(block.body, { x: 0, y: 0 });
+            Body.setAngularVelocity(block.body, 0);
+        }
+
+        // Puts the middle of the block's box at `center`, turned `rot` quarter turns
+        function positionBlock(block, center, rot) {
+            block.rot = ((rot % 4) + 4) % 4;
+            const angle = block.rot * QUARTER;
+            const offset = rotateVec(block.offset, angle);
+            Body.setAngle(block.body, angle);
+            Body.setPosition(block.body, { x: center.x + offset.x, y: center.y + offset.y });
+            Body.setVelocity(block.body, { x: 0, y: 0 });
+            Body.setAngularVelocity(block.body, 0);
+        }
+
+        function blockCenter(block) {
+            const offset = rotateVec(block.offset, block.body.angle);
+            return { x: block.body.position.x - offset.x, y: block.body.position.y - offset.y };
+        }
+
+        function nearestQuarterTurn(angle) {
+            return ((Math.round(angle / QUARTER) % 4) + 4) % 4;
+        }
+
+        // Lines a box of the given size up with the grid, as close to `point` as it can, inside the fence
+        function snapCenter(point, w, h) {
+            let left = Math.round((point.x - w / 2) / GRID) * GRID;
+            let top = Math.round((point.y - h / 2) / GRID) * GRID;
+            left = Math.min(Math.max(left, LEVEL_LEFT), LEVEL_RIGHT - w);
+            top = Math.min(Math.max(top, CEILING_Y), GROUND_Y - h);
+            return { x: left + w / 2, y: top + h / 2 };
+        }
+
+        function blockAt(point) {
+            // Newest first, and solid blocks before the background decorations behind them
+            const newestFirst = [...blocks].reverse();
+            const solidFirst = [...newestFirst.filter(b => b.tile.solid), ...newestFirst.filter(b => !b.tile.solid)];
+            return solidFirst.find(b => Vertices.contains(b.body.vertices, point)) ?? null;
+        }
 
         function createLetter(x, y, letter) {
-            const size = 80;
-            const body = Bodies.rectangle(x, y, size, size, {
-                restitution: 0.6,
-                friction: 0.5
-            });
-
-            const container = new PIXI.Container();
-
-            const bg = new PIXI.Graphics();
-            const colors = [0xE81416,
-                0xFFA500,
-                0xFAEB36,
-                0x79C314,
-                0x487DE7,
-                0x4B369D,
-                0x70369D];
-            const color = colors[Math.floor(Math.random() * colors.length)]
-
-            bg.beginFill(color);
-            bg.drawRoundedRect(-size / 2, -size / 2, size, size, 8);
-            bg.endFill();
-            container.addChild(bg);
-
-            const text = new PIXI.Text(letter, {
-                fontFamily: 'Arial',
-                fontSize: 32,
-                fontWeight: 'bold',
-                fill: 0xFFFFFF,
-                align: 'center',
-                dropShadow: true,
-            });
-            text.anchor.set(0.5);
-            container.addChild(text);
-
-            pixiParent.addChild(container);
-            World.add(engine.world, body);
-            body.label = "letter-" + letter;
-
-            objects.push({ body, sprite: container });
+            addBlock(LETTER_TILE, { x, y }, 0, false, letter);
         }
 
         function spawnRandomObject() {
-            const x = 200 + Math.random() * 400;
-            const y = 50;
+            const x = Math.min(Math.max(car.base.position.x - 200 + Math.random() * 400, LEVEL_LEFT + 60), LEVEL_RIGHT - 60);
+            const y = Math.max(camera.y + 60, CEILING_Y + 60);
             const letter = alphabet[currentLetterIndex];
             createLetter(x, y, letter);
             currentLetterIndex = (currentLetterIndex + 1) % alphabet.length;
         }
 
+        // ---------- The bear and its car ----------
+
+        let car;
+        const carContainer = new PIXI.Container();
+        const wheelSprites = [];
+        carLayer.addChild(carContainer);
+
+        function drawCarBody() {
+            const g = new PIXI.Graphics();
+            g.roundRect(-75, -15, 150, 30, 15).fill(0xe74c3c);
+            g.roundRect(-65, -11, 130, 8, 4).fill({ color: 0xffffff, alpha: 0.35 });
+            g.circle(68, 0, 6).fill(0xffe45c);
+            carContainer.addChild(g);
+        }
+
+        function makeWheelSprite() {
+            const g = new PIXI.Graphics();
+            g.circle(0, 0, 30).fill(0x2d2d2d);
+            g.circle(0, 0, 18).fill(0xbdc3c7);
+            for (let i = 0; i < 4; i++) {
+                const a = i * Math.PI / 4;
+                g.moveTo(Math.cos(a) * -16, Math.sin(a) * -16).lineTo(Math.cos(a) * 16, Math.sin(a) * 16).stroke({ width: 3, color: 0x7f8c8d });
+            }
+            g.circle(0, 0, 5).fill(0x555555);
+            carLayer.addChild(g);
+            return g;
+        }
+
+        function createBearCar(x, y) {
+            const group = Body.nextGroup(true);
+            const width = 150, height = 30, wheelRadius = 30, wheelOffset = width / 2 - 20;
+            const base = Bodies.rectangle(x, y, width, height, { chamfer: { radius: height / 2 }, density: 0.0002 });
+            // A very light box around the bear's head, so it bumps into blocks and the ceiling
+            const head = Bodies.rectangle(x - 20, y - 150, 150, 260, { chamfer: { radius: 60 }, density: 0.00001 });
+            const chassis = Body.create({ parts: [base, head], collisionFilter: { group }, label: 'bear' });
+            const wheelA = Bodies.circle(x - wheelOffset, y, wheelRadius, { collisionFilter: { group }, friction: 0.8 });
+            const wheelB = Bodies.circle(x + wheelOffset, y, wheelRadius, { collisionFilter: { group }, friction: 0.8 });
+            const axle = (wheel, ox) => Constraint.create({
+                bodyA: wheel,
+                bodyB: chassis,
+                pointB: { x: x + ox - chassis.position.x, y: y - chassis.position.y },
+                stiffness: 1,
+                length: 0
+            });
+            const composite = Composite.create({ label: 'Car' });
+            Composite.add(composite, [chassis, wheelA, wheelB, axle(wheelA, -wheelOffset), axle(wheelB, wheelOffset)]);
+            return { composite, chassis, base, head, wheels: [wheelA, wheelB], bodies: [chassis, wheelA, wheelB] };
+        }
+
         async function addCar() {
-            car = Composites.car(350, 300, 150, 30, 30);
-            World.add(engine.world, car);
-            car.label = "car";
-            pixiParent.addChild(carContainer);
+            spawnCar();
+            drawCarBody();
+            wheelSprites.push(makeWheelSprite(), makeWheelSprite());
             const bearTexture = await loadTexture("bear-char");
             const bearSprite = new PIXI.Sprite(bearTexture);
             bearSprite.scale = 0.4;
             bearSprite.position.x = -140;
             bearSprite.position.y = -320;
-            carContainer.addChild(bearSprite);
+            carContainer.addChildAt(bearSprite, 0);
         }
 
-        let car;
-        const carContainer = new PIXI.Container();
-
-        function initScene() {
-            const background = new PIXI.Container();
-            const backgroundRect = new PIXI.Graphics().rect(0, 0, GAME_WIDTH, GAME_HEIGHT).fill(0x2222aa);
-            background.addChild(backgroundRect);
-            pixiParent.addChild(background);
-            addCar();
+        function spawnCar() {
+            if (car) Composite.remove(engine.world, car.composite);
+            car = createBearCar(BEAR_START_X, GROUND_Y - 31);
+            Composite.add(engine.world, car.composite);
+            resolveBearOverlap();
         }
-        function resetScene() {
-            input = { xDirection: null, yDirection: null }
-            objects.forEach(obj => {
-                World.remove(engine.world, obj.body);
-                app.stage.removeChild(obj.sprite);
+
+        function stopCar() {
+            car.bodies.forEach(body => {
+                Body.setVelocity(body, { x: 0, y: 0 });
+                Body.setAngularVelocity(body, 0);
             });
-            objects.length = 0;
-            initScene();
-        }
-        function toggleDebug() {
-            debugMode = !debugMode;
-            debugCanvas.style.display = debugMode ? 'block' : 'none';
-            document.getElementById('debugBtn').classList.toggle('active', debugMode);
-        }
-
-        app.ticker.add(() => {
-            Engine.update(engine, 1000 / 60);
-
-            objects.forEach(obj => {
-                obj.sprite.x = obj.body.position.x;
-                obj.sprite.y = obj.body.position.y;
-                obj.sprite.rotation = obj.body.angle;
-            });
-
-            pollGamepads();
-            const xDirection = input.xDirection ?? gamepadXDirection;
-            if (xDirection !== null || input.yDirection !== null) {
-                moveCar(xDirection, input.yDirection)
-            }
-            renderCar();
-
-            Render.lookAt(debugRender, car.bodies, { x: 400, y: 400 }, true)
-            syncPixiWithMatter(pixiParent, debugRender)
-
-            if (debugMode) {
-                Render.world(debugRender);
-            }
-        });
-
-        function getPixiTransform(matterRender) {
-            const bounds = matterRender.bounds;
-            const options = matterRender.options;
-
-            const scaleX = options.width / (bounds.max.x - bounds.min.x);
-            const scaleY = options.height / (bounds.max.y - bounds.min.y);
-
-            return {
-                scale: Math.min(scaleX, scaleY),
-                offsetX: -bounds.min.x,
-                offsetY: -bounds.min.y
-            };
-        }
-
-        function syncPixiWithMatter(pixiContainer, matterRender) {
-            const transform = getPixiTransform(matterRender);
-
-            pixiContainer.scale.set(transform.scale);
-            pixiContainer.position.set(
-                transform.offsetX * transform.scale,
-                transform.offsetY * transform.scale
-            );
         }
 
         function moveCar(xDirection, yDirection) {
@@ -303,15 +702,566 @@
             if (xDirection === "up") { forceY = -1; }
             if (xDirection === "down") { forceY = 0; }
 
-            if (Math.abs(car.bodies[0].velocity.x) < MAX_VELOCITY_X) {
-                Body.applyForce(car.bodies[0], car.bodies[0].position, { x: forceX * 0.01, y: forceY * 0.2 })
+            if (Math.abs(car.chassis.velocity.x) < MAX_VELOCITY_X) {
+                Body.applyForce(car.chassis, car.chassis.position, { x: forceX * 0.01, y: forceY * 0.2 })
             }
         }
 
+        function jump() {
+            // One jump per physics step, so mashing the button can't pile up a huge launch
+            if (car.chassis.force.y < 0) return;
+            Body.applyForce(car.chassis, car.chassis.position, { x: 0, y: -0.2 })
+        }
+
+        // Keeps the bear inside the fence: no rocketing up by mashing jump, and a rescue if it ever slips out
+        function limitCar() {
+            car.bodies.forEach(body => {
+                if (body.velocity.y < -MAX_RISE_SPEED) {
+                    Body.setVelocity(body, { x: body.velocity.x, y: -MAX_RISE_SPEED });
+                }
+            });
+            const p = car.base.position;
+            if (p.x < LEVEL_LEFT || p.x > LEVEL_RIGHT || p.y < CEILING_Y || p.y > GROUND_Y) {
+                const x = Math.min(Math.max(p.x, LEVEL_LEFT + 120), LEVEL_RIGHT - 120);
+                Composite.remove(engine.world, car.composite);
+                car = createBearCar(x, GROUND_Y - 31);
+                Composite.add(engine.world, car.composite);
+                resolveBearOverlap();
+            }
+        }
+
+        // Ignores the tiny overlap physics leaves when the bear is just resting on a block
+        function carHitsBlocks() {
+            return blocks.some(block => block.tile.solid && Query.collides(block.body, car.bodies).some(collision => collision.depth > 2));
+        }
+
+        function carInsideLevel() {
+            const b = car.chassis.bounds;
+            const wheelBottom = Math.max(...car.wheels.map(w => w.bounds.max.y));
+            return b.min.x >= LEVEL_LEFT && b.max.x <= LEVEL_RIGHT && b.min.y >= CEILING_Y && wheelBottom <= GROUND_Y + 1;
+        }
+
+        // If a block ends up on top of the bear, slide the bear to the nearest free spot (trying up first)
+        function resolveBearOverlap() {
+            if (!car || !carHitsBlocks()) return false;
+            const directions = [[0, -1], [-1, 0], [1, 0], [-1, -1], [1, -1], [0, 1]];
+            const step = GRID / 2;
+            for (let distance = step; distance <= LEVEL_RIGHT; distance += step) {
+                for (const [dx, dy] of directions) {
+                    const move = { x: dx * distance, y: dy * distance };
+                    Composite.translate(car.composite, move);
+                    if (carInsideLevel() && !carHitsBlocks()) {
+                        stopCar();
+                        return true;
+                    }
+                    Composite.translate(car.composite, { x: -move.x, y: -move.y });
+                }
+            }
+            return false;
+        }
+
+        // ---------- Camera ----------
+
+        const camera = { x: BEAR_START_X - viewWidth() / 2, y: GROUND_Y - VIEW_HEIGHT };
+        const HUD_PANEL_HEIGHT = 96;
+        const TOP_BAR_HEIGHT = 56;
+
+        function updateCamera(snap = false) {
+            let tx = camera.x, ty = camera.y;
+            const scale = zoom(), viewW = viewWidth();
+            const bottomRoom = editor.active ? HUD_PANEL_HEIGHT / scale : 0;
+            const topRoom = editor.active ? (TOP_BAR_HEIGHT + 64) / scale : 0;
+            if (editor.active) {
+                // Only pan when the cursor gets near the edge of the screen
+                const p = cursorPoint();
+                const margin = 160;
+                if (p.x < tx + margin) tx = p.x - margin;
+                if (p.x > tx + viewW - margin) tx = p.x - viewW + margin;
+                if (p.y < ty + margin + topRoom) ty = p.y - margin - topRoom;
+                if (p.y > ty + VIEW_HEIGHT - margin - bottomRoom) ty = p.y - VIEW_HEIGHT + margin + bottomRoom;
+            } else {
+                tx = car.base.position.x - viewW / 2;
+                ty = car.base.position.y - VIEW_HEIGHT * 0.6;
+            }
+            const minX = LEVEL_LEFT - 60, maxX = LEVEL_RIGHT + 60 - viewW;
+            tx = maxX < minX ? (LEVEL_LEFT + LEVEL_RIGHT - viewW) / 2 : Math.min(Math.max(tx, minX), maxX);
+            ty = Math.min(Math.max(ty, CEILING_Y - 60 - topRoom), GROUND_Y + 100 + bottomRoom - VIEW_HEIGHT);
+            const ease = snap ? 1 : 0.15;
+            camera.x += (tx - camera.x) * ease;
+            camera.y += (ty - camera.y) * ease;
+
+            pixiParent.scale.set(scale);
+            pixiParent.position.set(-camera.x * scale, -camera.y * scale);
+        }
+
+        // ---------- Creative mode ----------
+
+        const editor = {
+            active: false,
+            cx: Math.floor(BEAR_START_X / GRID) + 4,
+            cy: Math.floor(GROUND_Y / GRID) - 1,
+            tileIndex: 0,
+            rot: 0,
+            held: null,
+            heldOffset: { x: 0, y: 0 },
+            dragging: false
+        };
+
+        const gridLines = new PIXI.Graphics();
+        for (let x = LEVEL_LEFT; x <= LEVEL_RIGHT; x += GRID) {
+            gridLines.moveTo(x, CEILING_Y).lineTo(x, GROUND_Y);
+        }
+        for (let y = CEILING_Y; y <= GROUND_Y; y += GRID) {
+            gridLines.moveTo(LEVEL_LEFT, y).lineTo(LEVEL_RIGHT, y);
+        }
+        gridLines.stroke({ width: 1, color: 0xffffff, alpha: 0.18 });
+        gridLines.visible = false;
+        editorLayer.addChild(gridLines);
+
+        const ghost = new PIXI.Container();
+        ghost.alpha = 0.5;
+        editorLayer.addChild(ghost);
+        const overlay = new PIXI.Graphics();
+        editorLayer.addChild(overlay);
+        let ghostTile = null;
+
+        function selectedTile() {
+            return TILES[editor.tileIndex];
+        }
+
+        function cursorPoint() {
+            return { x: (editor.cx + 0.5) * GRID, y: (editor.cy + 0.5) * GRID };
+        }
+
+        function setCursor(cx, cy) {
+            editor.cx = Math.min(Math.max(cx, Math.floor(LEVEL_LEFT / GRID)), Math.floor(LEVEL_RIGHT / GRID) - 1);
+            editor.cy = Math.min(Math.max(cy, Math.floor(CEILING_Y / GRID)), Math.floor(GROUND_Y / GRID) - 1);
+            moveHeldBlock();
+        }
+
+        function moveCursor(dx, dy) {
+            setCursor(editor.cx + dx, editor.cy + dy);
+        }
+
+        function setCursorFromWorld(point) {
+            setCursor(Math.floor(point.x / GRID), Math.floor(point.y / GRID));
+        }
+
+        function moveHeldBlock() {
+            const block = editor.held;
+            if (!block) return;
+            const p = cursorPoint();
+            const size = blockSize(block.tile, block.rot);
+            positionBlock(block, snapCenter({ x: p.x + editor.heldOffset.x, y: p.y + editor.heldOffset.y }, size.w, size.h), block.rot);
+        }
+
+        function setEditMode(on) {
+            if (editor.active === on) return;
+            if (!on && editor.held) dropHeld();
+            editor.active = on;
+            input = { xDirection: null, yDirection: null };
+            gamepadXDirection = null;
+            if (on) {
+                // Start the cursor just in front of the bear
+                setCursorFromWorld({ x: car.base.position.x + 160, y: car.base.position.y });
+            } else {
+                resolveBearOverlap();
+                stopCar();
+                saveBuild();
+            }
+            gridLines.visible = on;
+            ghost.visible = on;
+            overlay.visible = on;
+            paletteBar.visible = on;
+            buttons.edit.setActive(on);
+            blip(on ? 520 : 390, 0.12, 'triangle');
+        }
+
+        function toggleEditMode() {
+            setEditMode(!editor.active);
+        }
+
+        function grab(block) {
+            editor.held = block;
+            const center = blockCenter(block);
+            const p = cursorPoint();
+            editor.heldOffset = { x: center.x - p.x, y: center.y - p.y };
+            block.rot = nearestQuarterTurn(block.body.angle);
+            moveHeldBlock();
+            blip(660, 0.06);
+        }
+
+        function dropHeld() {
+            editor.held = null;
+            editor.dragging = false;
+            resolveBearOverlap();
+            saveBuild();
+            blip(440, 0.06);
+        }
+
+        // New blocks sit on the cursor square and grow up and to the right, so stacking is easy
+        function placementCenter(tile, rot) {
+            const size = blockSize(tile, rot);
+            const left = (editor.cx - Math.floor((size.w / GRID - 1) / 2)) * GRID;
+            const bottom = (editor.cy + 1) * GRID;
+            return snapCenter({ x: left + size.w / 2, y: bottom - size.h / 2 }, size.w, size.h);
+        }
+
+        function placeSelected() {
+            const tile = selectedTile();
+            addBlock(tile, placementCenter(tile, editor.rot), editor.rot, true);
+            resolveBearOverlap();
+            saveBuild();
+            blip(880, 0.07);
+        }
+
+        function solidBlockAt(point) {
+            const block = blockAt(point);
+            return block && block.tile.solid ? block : null;
+        }
+
+        // A / Space: drop what you're holding, pick up a solid block, or place a new one
+        // (new blocks can go on top of background pieces like wallpaper)
+        function editPrimary() {
+            if (editor.held) {
+                dropHeld();
+                return;
+            }
+            const block = solidBlockAt(cursorPoint());
+            if (block) grab(block);
+            else placeSelected();
+        }
+
+        // X / G: pick up or drop anything, background pieces included
+        function editGrab() {
+            if (editor.held) {
+                dropHeld();
+                return;
+            }
+            const block = blockAt(cursorPoint());
+            if (block) grab(block);
+        }
+
+        function editDelete() {
+            const block = editor.held ?? blockAt(cursorPoint());
+            if (!block) return;
+            if (block === editor.held) editor.held = null;
+            removeBlock(block);
+            saveBuild();
+            blip(220, 0.1, 'sawtooth');
+        }
+
+        function editRotate() {
+            const block = editor.held ?? blockAt(cursorPoint());
+            if (block) {
+                const rot = (nearestQuarterTurn(block.body.angle) + 1) % 4;
+                const size = blockSize(block.tile, rot);
+                if (block === editor.held) {
+                    block.rot = rot;
+                    moveHeldBlock();
+                } else {
+                    positionBlock(block, snapCenter(blockCenter(block), size.w, size.h), rot);
+                    resolveBearOverlap();
+                    saveBuild();
+                }
+            } else {
+                editor.rot = (editor.rot + 1) % 4;
+            }
+            blip(600, 0.05);
+        }
+
+        function cycleTile(direction) {
+            editor.tileIndex = (editor.tileIndex + direction + TILES.length) % TILES.length;
+            blip(500 + editor.tileIndex * 10, 0.04);
+        }
+
+        function selectTile(index) {
+            editor.tileIndex = index;
+            blip(500 + index * 10, 0.04);
+        }
+
+        // Pinned blocks stay where you put them; unpinned ones fall and tumble when you go back to playing
+        function editTogglePin() {
+            const block = editor.held ?? blockAt(cursorPoint());
+            if (!block || !block.tile.solid) return;
+            setPinned(block, !block.pinned);
+            saveBuild();
+            blip(block.pinned ? 700 : 300, 0.08, 'triangle');
+        }
+
+        // Clearing takes two presses, so nobody wipes a house by accident
+        let clearArmedUntil = 0;
+        function clearBuild() {
+            const now = performance.now();
+            if (now > clearArmedUntil) {
+                clearArmedUntil = now + 3000;
+                blip(300, 0.1, 'triangle');
+                return;
+            }
+            clearArmedUntil = 0;
+            editor.held = null;
+            [...blocks].forEach(removeBlock);
+            saveBuild();
+        }
+
+        function drawEditorOverlay(now) {
+            overlay.clear();
+            if (!editor.active) return;
+            const p = cursorPoint();
+            const hovered = editor.held ?? blockAt(p);
+            const willPlace = !editor.held && !solidBlockAt(p);
+
+            const tile = selectedTile();
+            if (ghostTile !== tile) {
+                ghost.removeChildren().forEach(child => child.destroy());
+                ghost.addChild(makeTileGraphic(tile));
+                ghostTile = tile;
+            }
+            ghost.visible = willPlace;
+            if (willPlace) {
+                const center = placementCenter(tile, editor.rot);
+                ghost.position.set(center.x, center.y);
+                ghost.rotation = editor.rot * QUARTER;
+            }
+
+            // Blocks that will fall when you play get a little arrow
+            blocks.forEach(block => {
+                if (!block.pinned) {
+                    const c = blockCenter(block);
+                    overlay.circle(c.x, c.y, 13).fill({ color: 0x000000, alpha: 0.45 });
+                    overlay.poly([c.x - 7, c.y - 3, c.x + 7, c.y - 3, c.x, c.y + 7]).fill(0xffffff);
+                }
+            });
+
+            if (hovered) {
+                const b = hovered.body.bounds;
+                overlay.rect(b.min.x - 3, b.min.y - 3, b.max.x - b.min.x + 6, b.max.y - b.min.y + 6)
+                    .stroke({ width: 4, color: editor.held ? 0x2ecc71 : 0xffffff });
+            }
+
+            const pulse = 0.6 + 0.4 * Math.sin(now / 150);
+            overlay.rect(editor.cx * GRID, editor.cy * GRID, GRID, GRID).stroke({ width: 4, color: 0xffe45c, alpha: pulse });
+        }
+
+        // ---------- HUD ----------
+
+        const hintText = new PIXI.Text({
+            text: '',
+            style: { fontFamily: 'Arial', fontSize: 15, fill: 0xffffff, align: 'center', stroke: { color: 0x1a1a2e, width: 4 }, lineHeight: 20 }
+        });
+        hintText.anchor.set(0.5, 0);
+        hud.addChild(hintText);
+
+        // On-screen buttons, drawn by Pixi like everything else
+        const buttonBar = new PIXI.Container();
+        hud.addChild(buttonBar);
+
+        function makeButton(label, onPress) {
+            const button = new PIXI.Container();
+            const bg = new PIXI.Graphics();
+            const text = new PIXI.Text({ text: label, style: { fontFamily: 'Arial', fontSize: 15, fill: 0xffffff } });
+            text.anchor.set(0.5);
+            button.addChild(bg, text);
+            button.eventMode = 'static';
+            button.cursor = 'pointer';
+            let active = false, hover = false;
+            const redraw = () => {
+                const w = text.width + 32, h = 38;
+                bg.clear().roundRect(0, 0, w, h, 6).fill(active ? 0xe94560 : hover ? 0x16213e : 0x0f3460);
+                bg.roundRect(0, 0, w, h, 6).stroke({ width: 2, color: 0xffffff, alpha: 0.15 });
+                text.position.set(w / 2, h / 2);
+            };
+            button.on('pointerdown', (e) => {
+                e.stopPropagation();
+                if (!playedInitialAudio) playInitialAudio();
+                onPress();
+            });
+            button.on('pointerover', () => { hover = true; redraw(); });
+            button.on('pointerout', () => { hover = false; redraw(); });
+            button.setActive = (on) => { active = on; redraw(); };
+            button.setLabel = (value) => { if (text.text !== value) { text.text = value; redraw(); layoutHud(); } };
+            redraw();
+            buttonBar.addChild(button);
+            return button;
+        }
+
+        function toggleFullscreen() {
+            try {
+                if (document.fullscreenElement) document.exitFullscreen();
+                else document.documentElement.requestFullscreen();
+            } catch (e) { }
+        }
+
+        const buttons = {
+            edit: makeButton('Creative Mode (E / Y)', () => toggleEditMode()),
+            spawn: makeButton('Spawn Letter (Space / X)', () => spawnRandomObject()),
+            reset: makeButton('Reset Bear (R / Start)', () => resetScene()),
+            debug: makeButton('Debug (D / Select)', () => toggleDebug()),
+            clear: makeButton('Clear Built Blocks', () => clearBuild()),
+            fullscreen: makeButton('Full Screen (F)', toggleFullscreen),
+        };
+
+        const paletteBar = new PIXI.Container();
+        paletteBar.visible = false;
+        hud.addChild(paletteBar);
+        const paletteBg = new PIXI.Graphics();
+        paletteBg.eventMode = 'static';
+        paletteBg.on('pointerdown', e => e.stopPropagation());
+        paletteBar.addChild(paletteBg);
+        const paletteStrip = new PIXI.Container();
+        paletteBar.addChild(paletteStrip);
+        const paletteName = new PIXI.Text({
+            text: '',
+            style: { fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', fill: 0xffe45c, align: 'center' }
+        });
+        paletteName.anchor.set(0.5, 0);
+        paletteBar.addChild(paletteName);
+
+        const SLOT = 52, SLOT_GAP = 10;
+        const paletteSlots = TILES.map((tile, i) => {
+            const slot = new PIXI.Container();
+            slot.position.x = i * (SLOT + SLOT_GAP);
+            const bg = new PIXI.Graphics();
+            slot.addChild(bg);
+            const icon = makeTileGraphic(tile);
+            const scale = Math.min((SLOT - 10) / tile.w, (SLOT - 10) / tile.h);
+            icon.scale.set(scale);
+            icon.position.set(SLOT / 2, SLOT / 2);
+            slot.addChild(icon);
+            slot.eventMode = 'static';
+            slot.cursor = 'pointer';
+            slot.on('pointerdown', (e) => {
+                e.stopPropagation();
+                selectTile(i);
+            });
+            paletteStrip.addChild(slot);
+            return { slot, bg };
+        });
+
+        function layoutHud() {
+            const { width, height } = app.screen;
+            const gap = 10;
+            let x = 0;
+            buttonBar.children.forEach(button => {
+                button.position.set(x, 0);
+                x += button.width + gap;
+            });
+            const barWidth = x - gap;
+            const fit = Math.min(1, (width - 20) / barWidth);
+            buttonBar.scale.set(fit);
+            buttonBar.position.set((width - barWidth * fit) / 2, 9);
+            hintText.position.set(width / 2, TOP_BAR_HEIGHT + 4);
+            paletteBg.clear().rect(0, height - HUD_PANEL_HEIGHT, width, HUD_PANEL_HEIGHT).fill({ color: 0x1a1a2e, alpha: 0.85 });
+            paletteStrip.position.y = height - 62;
+            paletteName.position.set(width / 2, height - HUD_PANEL_HEIGHT + 6);
+        }
+        app.renderer.on('resize', layoutHud);
+        layoutHud();
+
+        function updateHud() {
+            buttons.clear.setLabel(performance.now() < clearArmedUntil ? 'Press again to clear!' : 'Clear Built Blocks');
+            buttons.clear.setActive(performance.now() < clearArmedUntil);
+            buttons.fullscreen.setLabel(document.fullscreenElement ? 'Exit Full Screen (F)' : 'Full Screen (F)');
+            if (editor.active) {
+                const solid = solidBlockAt(cursorPoint());
+                const action = editor.held ? 'drop ' + editor.held.tile.name
+                    : solid ? 'pick up ' + (solid.letter ? 'letter ' + solid.letter : solid.tile.name)
+                        : 'place ' + selectedTile().name;
+                hintText.text = 'CREATIVE MODE  (physics paused)\n'
+                    + 'Controller: A ' + action + ' · X move · B delete · LB/RB change · LT turn · RT pin · Y play\n'
+                    + 'Keyboard: Space ' + action + ' · G move · X delete · Q/W change · Z turn · P pin · E play';
+                paletteName.text = selectedTile().name + (selectedTile().solid ? '' : '  (background)');
+                const targetX = app.screen.width / 2 - (editor.tileIndex * (SLOT + SLOT_GAP) + SLOT / 2);
+                paletteStrip.position.x += (targetX - paletteStrip.position.x) * 0.25;
+                paletteSlots.forEach(({ bg }, i) => {
+                    const selected = i === editor.tileIndex;
+                    bg.clear();
+                    bg.roundRect(0, 0, SLOT, SLOT, 8).fill(selected ? 0xffe45c : 0x2c3e66);
+                    bg.roundRect(3, 3, SLOT - 6, SLOT - 6, 6).fill(selected ? 0xfff6c4 : 0x3d5288);
+                });
+            } else {
+                hintText.text = 'Press Y (controller) or E (keyboard) for Creative Mode';
+            }
+        }
+
+        // ---------- Saving what you built ----------
+
+        function saveBuild() {
+            try {
+                const data = blocks.filter(b => b.tile !== LETTER_TILE).map(b => {
+                    const c = blockCenter(b);
+                    return { t: b.tile.id, x: Math.round(c.x), y: Math.round(c.y), r: nearestQuarterTurn(b.body.angle), p: b.pinned };
+                });
+                localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+            } catch (e) { }
+        }
+
+        function loadBuild() {
+            try {
+                const data = JSON.parse(localStorage.getItem(SAVE_KEY) || '[]');
+                data.forEach(({ t, x, y, r, p }) => {
+                    const tile = TILE_BY_ID[t];
+                    if (tile) addBlock(tile, { x, y }, r, p);
+                });
+            } catch (e) { }
+        }
+
+        // ---------- Scene ----------
+
+        function initScene() {
+            drawLevel();
+            loadBuild();
+            addCar();
+            updateCamera(true);
+        }
+
+        // Puts the bear back at the start and clears spawned letters; your build stays
+        function resetScene() {
+            input = { xDirection: null, yDirection: null }
+            editor.held = null;
+            blocks.filter(b => b.tile === LETTER_TILE).forEach(removeBlock);
+            currentLetterIndex = 0;
+            spawnCar();
+        }
+
+        function toggleDebug() {
+            debugMode = !debugMode;
+            buttons.debug.setActive(debugMode);
+        }
+
+        app.ticker.add(() => {
+            const now = performance.now();
+            pollGamepads(now);
+
+            if (!editor.active) {
+                const xDirection = input.xDirection ?? gamepadXDirection;
+                if (xDirection !== null || input.yDirection !== null) {
+                    moveCar(xDirection, input.yDirection)
+                }
+                Engine.update(engine, 1000 / 60);
+                limitCar();
+            }
+
+            blocks.forEach(block => {
+                block.sprite.x = block.body.position.x;
+                block.sprite.y = block.body.position.y;
+                block.sprite.rotation = block.body.angle;
+            });
+            renderCar();
+            updateCamera();
+            drawEditorOverlay(now);
+            updateHud();
+            drawDebug();
+        });
+
         function renderCar() {
-            carContainer.position.x = car.bodies[0].position.x;
-            carContainer.position.y = car.bodies[0].position.y;
-            carContainer.rotation = car.bodies[0].angle;
+            carContainer.position.x = car.base.position.x;
+            carContainer.position.y = car.base.position.y;
+            carContainer.rotation = car.chassis.angle;
+            wheelSprites.forEach((sprite, i) => {
+                sprite.position.set(car.wheels[i].position.x, car.wheels[i].position.y);
+                sprite.rotation = car.wheels[i].angle;
+            });
         }
 
         function playAudio(name) {
@@ -324,90 +1274,189 @@
             playedInitialAudio = true;
         }
 
-        function jump() {
-            Body.applyForce(car.bodies[0], car.bodies[0].position, { x: 0, y: -0.2 })
+        let audioContext = null;
+        function blip(frequency, duration, type = 'square') {
+            try {
+                audioContext ??= new AudioContext();
+                const t = audioContext.currentTime;
+                const osc = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(frequency, t);
+                osc.frequency.exponentialRampToValueAtTime(frequency * 1.5, t + duration);
+                gain.gain.setValueAtTime(0.06, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+                osc.connect(gain).connect(audioContext.destination);
+                osc.start(t);
+                osc.stop(t + duration);
+            } catch (e) { }
         }
 
         // Standard gamepad layout (Steam Deck, Xbox, PlayStation, Switch Pro)
-        const GAMEPAD_BUTTON = { A: 0, B: 1, X: 2, Y: 3, SELECT: 8, START: 9, DPAD_UP: 12, DPAD_LEFT: 14, DPAD_RIGHT: 15 };
+        const GAMEPAD_BUTTON = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, SELECT: 8, START: 9, DPAD_UP: 12, DPAD_DOWN: 13, DPAD_LEFT: 14, DPAD_RIGHT: 15 };
         const STICK_DEADZONE = 0.3;
+        const CURSOR_REPEAT_DELAY = 300;
+        const CURSOR_REPEAT_RATE = 90;
+        let cursorRepeat = { key: null, next: 0 };
 
-        function pollGamepads() {
+        function pollGamepads(now) {
             const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-            let xDirection = null;
+            let dx = 0, dy = 0;
             const pressed = [];
             for (const pad of pads) {
                 if (!pad) continue;
                 pad.buttons.forEach((button, i) => { if (button.pressed) pressed[i] = true; });
                 const stickX = pad.axes[0] ?? 0;
-                if (pad.buttons[GAMEPAD_BUTTON.DPAD_LEFT]?.pressed || stickX < -STICK_DEADZONE) xDirection = "left";
-                if (pad.buttons[GAMEPAD_BUTTON.DPAD_RIGHT]?.pressed || stickX > STICK_DEADZONE) xDirection = "right";
+                const stickY = pad.axes[1] ?? 0;
+                if (pad.buttons[GAMEPAD_BUTTON.DPAD_LEFT]?.pressed || stickX < -STICK_DEADZONE) dx = -1;
+                if (pad.buttons[GAMEPAD_BUTTON.DPAD_RIGHT]?.pressed || stickX > STICK_DEADZONE) dx = 1;
+                if (pad.buttons[GAMEPAD_BUTTON.DPAD_UP]?.pressed || stickY < -STICK_DEADZONE) dy = -1;
+                if (pad.buttons[GAMEPAD_BUTTON.DPAD_DOWN]?.pressed || stickY > STICK_DEADZONE) dy = 1;
             }
-            gamepadXDirection = xDirection;
 
-            const justPressed = (i) => pressed[i] && !previousGamepadButtons[i];
+            const previous = previousGamepadButtons;
+            const justPressed = (i) => pressed[i] && !previous[i];
+            previousGamepadButtons = pressed;
             if (pressed.some(Boolean) && !playedInitialAudio) {
                 playInitialAudio();
             }
-            if (justPressed(GAMEPAD_BUTTON.A) || justPressed(GAMEPAD_BUTTON.DPAD_UP)) jump();
-            if (justPressed(GAMEPAD_BUTTON.X)) spawnRandomObject();
+            if (justPressed(GAMEPAD_BUTTON.Y)) toggleEditMode();
             if (justPressed(GAMEPAD_BUTTON.SELECT)) toggleDebug();
             if (justPressed(GAMEPAD_BUTTON.START)) resetScene();
-            previousGamepadButtons = pressed;
-        }
 
-        // Scale the game up to fill big screens like a TV
-        function fitToWindow() {
-            const container = document.getElementById('gameContainer');
-            const controlsHeight = document.querySelector('.controls').offsetHeight + 40;
-            const scale = Math.min(window.innerWidth / (GAME_WIDTH + 40), (window.innerHeight - controlsHeight) / (GAME_HEIGHT + 40));
-            container.style.transform = `scale(${Math.max(scale, 0.25)})`;
+            if (editor.active) {
+                gamepadXDirection = null;
+                // Move the cursor one square per press, repeating while held
+                const key = dx || dy ? dx + ',' + dy : null;
+                if (key && key !== cursorRepeat.key) {
+                    moveCursor(dx, dy);
+                    cursorRepeat = { key, next: now + CURSOR_REPEAT_DELAY };
+                } else if (key && now >= cursorRepeat.next) {
+                    moveCursor(dx, dy);
+                    cursorRepeat.next = now + CURSOR_REPEAT_RATE;
+                } else if (!key) {
+                    cursorRepeat.key = null;
+                }
+                if (justPressed(GAMEPAD_BUTTON.A)) editPrimary();
+                if (justPressed(GAMEPAD_BUTTON.B)) editDelete();
+                if (justPressed(GAMEPAD_BUTTON.X)) editGrab();
+                if (justPressed(GAMEPAD_BUTTON.LT)) editRotate();
+                if (justPressed(GAMEPAD_BUTTON.LB)) cycleTile(-1);
+                if (justPressed(GAMEPAD_BUTTON.RB)) cycleTile(1);
+                if (justPressed(GAMEPAD_BUTTON.RT)) editTogglePin();
+            } else {
+                gamepadXDirection = dx < 0 ? "left" : dx > 0 ? "right" : null;
+                if (justPressed(GAMEPAD_BUTTON.A) || justPressed(GAMEPAD_BUTTON.DPAD_UP)) jump();
+                if (justPressed(GAMEPAD_BUTTON.X)) spawnRandomObject();
+            }
         }
-        window.addEventListener('resize', fitToWindow);
-        fitToWindow();
 
         async function onPointerEvent(e) {
+            if (editor.active) {
+                // Moving over the button bar or the parts bar shouldn't drag the cursor along
+                const overHud = e.global.y < TOP_BAR_HEIGHT || e.global.y > app.screen.height - HUD_PANEL_HEIGHT;
+                if (overHud && !editor.dragging) return;
+                setCursorFromWorld(e.getLocalPosition(pixiParent));
+                return;
+            }
             if (pointerDown) {
                 const pos = e.getLocalPosition(app.stage)
-                const xDirection = pos.x > app.stage.width / 2 ? "right" : "left"
-                const yDirection = pos.y < app.stage.height / 2 ? "up" : "down"
+                const xDirection = pos.x > app.screen.width / 2 ? "right" : "left"
+                const yDirection = pos.y < app.screen.height / 2 ? "up" : "down"
                 input = { xDirection, yDirection }
             }
         }
 
+        function onPointerUp() {
+            pointerDown = false
+            if (editor.active) {
+                if (editor.dragging && editor.held) dropHeld();
+                editor.dragging = false;
+                return;
+            }
+            input = { xDirection: null, yDirection: null }
+        }
+
         app.stage.eventMode = 'static'
+        app.stage.hitArea = app.screen
         app.stage.on('pointerdown', async (e) => {
             if (!playedInitialAudio) {
                 playInitialAudio();
             }
+            if (editor.active) {
+                setCursorFromWorld(e.getLocalPosition(pixiParent));
+                if (e.button === 2) {
+                    editDelete();
+                    return;
+                }
+                if (editor.held) {
+                    dropHeld();
+                    return;
+                }
+                // Drag solid blocks around, click anywhere else to place
+                const block = solidBlockAt(cursorPoint()) ?? (e.shiftKey ? blockAt(cursorPoint()) : null);
+                if (block) {
+                    grab(block);
+                    editor.dragging = true;
+                } else {
+                    placeSelected();
+                }
+                return;
+            }
             pointerDown = true
         })
-        app.stage.on('pointerup', async (e) => {
-            pointerDown = false
-            input = { xDirection: null, yDirection: null }
-        })
+        app.stage.on('pointerup', onPointerUp)
+        app.stage.on('pointerupoutside', onPointerUp)
         app.stage.on('pointermove', onPointerEvent)
-
-        document.getElementById('debugBtn').addEventListener('click', toggleDebug);
-        document.getElementById('spawnBtn').addEventListener('click', spawnRandomObject);
-        document.getElementById('resetBtn').addEventListener('click', resetScene);
+        app.canvas.addEventListener('contextmenu', e => e.preventDefault());
+        app.canvas.addEventListener('wheel', (e) => {
+            if (!editor.active) return;
+            e.preventDefault();
+            cycleTile(e.deltaY > 0 ? 1 : -1);
+        }, { passive: false });
 
         document.addEventListener('keydown', (e) => {
             if (!playedInitialAudio) {
                 playInitialAudio();
             }
-            if (e.key === 'd' || e.key === 'D') {
+            const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+            if (key === 'e' && !e.repeat) {
+                toggleEditMode();
+            } else if (key === 'd' && !e.repeat) {
                 toggleDebug();
-            } else if (e.key === ' ') {
+            } else if (key === 'r' && !e.repeat) {
+                resetScene();
+            } else if (key === 'f' && !e.repeat) {
+                toggleFullscreen();
+            } else if (editor.active) {
+                const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+                if (moves[key]) {
+                    e.preventDefault();
+                    moveCursor(...moves[key]);
+                } else if ((key === ' ' || key === 'Enter') && !e.repeat) {
+                    e.preventDefault();
+                    editPrimary();
+                } else if ((key === 'x' || key === 'Delete' || key === 'Backspace') && !e.repeat) {
+                    editDelete();
+                } else if (key === 'g' && !e.repeat) {
+                    editGrab();
+                } else if (key === 'z' && !e.repeat) {
+                    editRotate();
+                } else if (key === 'q') {
+                    cycleTile(-1);
+                } else if (key === 'w') {
+                    cycleTile(1);
+                } else if (key === 'p' && !e.repeat) {
+                    editTogglePin();
+                }
+            } else if (key === ' ') {
                 e.preventDefault();
                 spawnRandomObject();
-            } else if (e.key === 'r' || e.key === 'R') {
-                resetScene();
-            } else if (e.key === 'ArrowRight') {
+            } else if (key === 'ArrowRight') {
                 input.xDirection = "right"
-            } else if (e.key === 'ArrowLeft') {
+            } else if (key === 'ArrowLeft') {
                 input.xDirection = "left"
-            } else if (e.key === 'ArrowUp') {
+            } else if (key === 'ArrowUp') {
                 jump();
             }
         });
@@ -420,7 +1469,14 @@
             }
         });
 
+        // Save now and then too, so blocks that fell over during play are remembered
+        setInterval(() => { if (!editor.held) saveBuild(); }, 5000);
+        window.addEventListener('beforeunload', saveBuild);
+
         initScene();
+
+        // Handy for poking at the game from the browser console
+        window.bearGame = { engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
     </script>
 </body>
 
