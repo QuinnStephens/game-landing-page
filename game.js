@@ -3,11 +3,12 @@
 (async () => {
   const PINK = 0xe600e0;
   const TITLE_BG = 0xf6f6f6;
+  const WOMB_BG = 0xffa6f2;
 
   const app = new PIXI.Application();
   await app.init({
     resizeTo: window,
-    background: 0x000000,
+    background: WOMB_BG,
     antialias: true,
     autoDensity: true,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -58,16 +59,16 @@
   womb.addChild(scribble);
   const bubbles = new PIXI.Container();
   const baby = new PIXI.Sprite(babyTex);
-  baby.anchor.set(0.5, 0.5);
+  baby.anchor.set(0.42, 0.62); // body centre; the hair sticks out above
   const ows = new PIXI.Container();
-  world.addChild(womb, bubbles, baby, ows);
+  world.addChild(womb, bubbles, ows, baby);
 
   const hud = new PIXI.Container();
   const hudIcon = new PIXI.Sprite(owTex);
   hudIcon.anchor.set(0, 0.5);
   const hudText = new PIXI.Text({
     text: '× 0',
-    style: { fontFamily: 'Comic Sans MS, Chalkboard SE, Marker Felt, sans-serif', fontWeight: 'bold', fill: 0xffffff, fontSize: 32 },
+    style: { fontFamily: 'Comic Sans MS, Chalkboard SE, Marker Felt, sans-serif', fontWeight: 'bold', fill: 0x111111, fontSize: 32 },
   });
   hudText.anchor.set(0, 0.5);
   hud.addChild(hudIcon, hudText);
@@ -121,8 +122,8 @@
     A = Math.max(U * 0.25, W / 2 - pad);
     B = Math.max(U * 0.25, H / 2 - pad);
 
-    const babySize = U * 0.2;
-    baby.scale.set(babySize / babyTex.height);
+    const babySize = U * 0.2; // head + body, not counting the hair
+    baby.scale.set((babySize * 1.5) / babyTex.height);
     baseBabyScale = baby.scale.x;
     R = babySize * 0.45;
 
@@ -206,7 +207,7 @@
     o.anchor.set(0.5);
     o.position.set(x, y);
     o.rotation = rand(-0.5, 0.5);
-    o.target = (U * (0.12 + 0.08 * strength)) / owTex.height;
+    o.target = (U * (0.1 + 0.06 * strength)) / owTex.height;
     o.scale.set(0.01);
     o.life = o.maxLife = 1.0;
     ows.addChild(o);
