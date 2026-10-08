@@ -4,9 +4,23 @@ A Pixi + Matter.js physics game. It's a single static `index.html` with assets i
 
 ## Main menu
 
-The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** starts the game; **Creative** and **Survival** say "coming soon" for now.
+The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** opens the character creator; **Creative** and **Survival** say "coming soon" for now.
 
 The menu art lives in `public/img/menu/`: `background.jpg` and one PNG per button, cut from the layers of the original drawing, plus a `-glow.png` for each button's highlight. Button positions in `index.html` (`MENU_BUTTONS`) are the layer positions in that 2224x1668 drawing.
+
+## Character creator
+
+Before Explore starts you make your character, on a screen cut from the hand-drawn design. Every piece sits where it was drawn:
+
+- **Lower left:** bear or human
+- **Top:** skin colour
+- **Tall oval:** hairstyles
+- **Upper left:** pants and skirts
+- **Far right:** shirts (the black one is a dress)
+
+Only humans can change how they look: a bear is just a brown bear, so the other panels fade out while bear is picked. Click a piece to put it on, and click it again to take it off (hair and clothes only). With the keyboard or a controller, the arrow keys, D-pad or left stick move a red ring between the pieces without picking anything, and Enter or A picks the piece in the ring (or starts the game on the **Explore** button in the bottom right). Picked pieces glow orange. Start also starts the game. Esc or B goes back to the main menu. Your character rides in the car, and it's remembered next time.
+
+The pieces are in `public/img/creator/`, with `layout.json` saying where each one sat in the 2224x1668 drawing. `tools/cut_creator_art.py` cut them out of the drawing (it needs numpy, scipy and Pillow), so changes to the drawing can be re-cut with `python3 tools/cut_creator_art.py character-creator-design.png`. How clothes and hair fit on the character is in `index.html` (`CLOTHES_BOXES`, `HAIR_BOXES`).
 
 ## Pausing
 
