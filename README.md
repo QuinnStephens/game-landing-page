@@ -24,7 +24,7 @@ The pieces are in `public/img/creator/`, with `layout.json` saying where each on
 
 ## Survival
 
-A platformer level cut from the hand-drawn survival design: purple scribbles, black-outlined platforms and little blue blobs that patrol back and forth. You drive the same way as in Explore, but there's no build mode and no letter blocks, and you can only jump from something solid (Space jumps too). Jump on a blob to squish it; touch one any other way and it's back to the start, since you only get one hit. Reach the big star at the end for a burst of sparkles, and the level starts over a few seconds later.
+A platformer level cut from the hand-drawn survival design: purple scribbles, black-outlined platforms and little blue blobs that patrol back and forth. You drive the same way as in Explore, but there's no build mode and no letter blocks, and you can only jump from something solid (Space jumps too). Run into a blob with the car (or land on it) to squish it; if a blob touches your character instead, it's back to the start, since you only get one hit. Reach the big star at the end for a burst of sparkles, and the level starts over a few seconds later.
 
 The blobs and platforms are in `public/img/survival/`, cut out of the drawing by `tools/cut_survival_art.py` (`python3 tools/cut_survival_art.py survival-design.png`; it needs numpy, scipy and Pillow). `layout.json` has each piece's size and, for platforms, the outline of the solid part. The level itself is `SURVIVAL_PLATFORMS` and `SURVIVAL_ENEMIES` in `index.html`, and `JUMP_SPEED` sets how high the bear jumps.
 

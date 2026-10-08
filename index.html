@@ -1506,15 +1506,15 @@
                 Body.setPosition(enemy.body, { x: enemy.x, y: y - ENEMY_HEIGHT * 0.42 });
                 if (survival.state !== 'running') return;
 
-                // Landing on a blob from above squishes it; touching it any other way hurts
-                const stomped = car.wheels.some(wheel => wheel.velocity.y > 0.5 && wheel.position.y < enemy.body.position.y
-                    && Query.collides(enemy.body, [wheel]).length > 0);
-                if (stomped) {
+                // The car (wheels and body) squishes a blob from any side, bouncing up if it landed on it.
+                // Only the character riding in it gets hurt
+                const squished = Query.collides(enemy.body, [...car.wheels, car.base]).length > 0;
+                if (squished) {
                     enemy.dead = true;
-                    setCarRise(STOMP_BOUNCE);
+                    if (car.chassis.velocity.y > 0.5 && car.base.position.y < enemy.body.position.y) setCarRise(STOMP_BOUNCE);
                     burstSparkles(enemy.x, y - 40, 14);
                     blip(880, 0.12, 'square');
-                } else if (Query.collides(enemy.body, car.bodies).length > 0) {
+                } else if (Query.collides(enemy.body, [car.head]).length > 0) {
                     hurtBear(now);
                 }
             });
@@ -2442,7 +2442,7 @@
         initScene();
 
         // Handy for poking at the game from the browser console
-        window.bearGame = { game, survival, enemies, startSurvival, restartSurvival, burstSparkles, get level() { return level; }, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
+        window.bearGame = { app, game, survival, enemies, startSurvival, restartSurvival, burstSparkles, get level() { return level; }, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
     </script>
 </body>
 
