@@ -794,7 +794,7 @@
             pixiParent.position.set(-camera.x * scale, -camera.y * scale);
         }
 
-        // ---------- Creative mode ----------
+        // ---------- Build mode (pauses physics so you can place pieces) ----------
 
         const editor = {
             active: false,
@@ -1073,7 +1073,6 @@
             };
             button.on('pointerdown', (e) => {
                 e.stopPropagation();
-                if (!playedInitialAudio) playInitialAudio();
                 onPress();
             });
             button.on('pointerover', () => { hover = true; redraw(); });
@@ -1093,9 +1092,10 @@
         }
 
         const buttons = {
-            edit: makeButton('Creative Mode (E / Y)', () => toggleEditMode()),
+            pause: makeButton('Pause (Esc / Start)', () => pauseGame()),
+            edit: makeButton('Build Mode (E / Y)', () => toggleEditMode()),
             spawn: makeButton('Spawn Letter (Space / X)', () => spawnRandomObject()),
-            reset: makeButton('Reset Bear (R / Start)', () => resetScene()),
+            reset: makeButton('Reset Bear (R)', () => resetScene()),
             debug: makeButton('Debug (D / Select)', () => toggleDebug()),
             clear: makeButton('Clear Built Blocks', () => clearBuild()),
             fullscreen: makeButton('Full Screen (F)', toggleFullscreen),
@@ -1167,7 +1167,7 @@
                 const action = editor.held ? 'drop ' + editor.held.tile.name
                     : solid ? 'pick up ' + (solid.letter ? 'letter ' + solid.letter : solid.tile.name)
                         : 'place ' + selectedTile().name;
-                hintText.text = 'CREATIVE MODE  (physics paused)\n'
+                hintText.text = 'BUILD MODE  (physics paused)\n'
                     + 'Controller: A ' + action + ' · X move · B delete · LB/RB change · LT turn · RT pin · Y play\n'
                     + 'Keyboard: Space ' + action + ' · G move · X delete · Q/W change · Z turn · P pin · E play';
                 paletteName.text = selectedTile().name + (selectedTile().solid ? '' : '  (background)');
@@ -1180,7 +1180,245 @@
                     bg.roundRect(3, 3, SLOT - 6, SLOT - 6, 6).fill(selected ? 0xfff6c4 : 0x3d5288);
                 });
             } else {
-                hintText.text = 'Press Y (controller) or E (keyboard) for Creative Mode';
+                hintText.text = 'Press Y (controller) or E (keyboard) for Build Mode';
+            }
+        }
+
+        // ---------- Main menu (hand-drawn) and pause menu ----------
+
+        const game = { state: 'menu' }; // 'menu', 'playing' or 'paused'
+
+        // The menu art is 2224x1668, and each button sits where it was drawn (layers of main-menu.psd)
+        const MENU_ART = { w: 2224, h: 1668 };
+        const MENU_BUTTONS = [
+            { id: 'creative', label: 'Creative', x: 1245, y: 430, w: 880, h: 226 },
+            { id: 'explore', label: 'Explore', x: 1221, y: 701, w: 921, h: 244 },
+            { id: 'survival', label: 'Survival', x: 1065, y: 1046, w: 933, h: 214 },
+        ];
+
+        const mainMenu = new PIXI.Container();
+        const mainMenuBackdrop = new PIXI.Graphics();
+        const mainMenuArt = new PIXI.Container();
+        mainMenu.addChild(mainMenuBackdrop, mainMenuArt);
+        app.stage.addChild(mainMenu);
+        mainMenuArt.addChild(new PIXI.Sprite(await PIXI.Assets.load('public/img/menu/background.jpg')));
+
+        const menu = { index: 1 };
+        const menuItems = await Promise.all(MENU_BUTTONS.map(async (def, i) => {
+            const [texture, glowTexture] = await Promise.all([
+                PIXI.Assets.load(`public/img/menu/${def.id}.png`),
+                PIXI.Assets.load(`public/img/menu/${def.id}-glow.png`)
+            ]);
+            const item = new PIXI.Container();
+            item.position.set(def.x + def.w / 2, def.y + def.h / 2);
+            // A soft yellow glow cut to the button's shape, faded in when it's selected
+            const glow = new PIXI.Sprite(glowTexture);
+            glow.anchor.set(0.5);
+            glow.alpha = 0;
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5);
+            item.addChild(glow, sprite);
+            item.eventMode = 'static';
+            item.cursor = 'pointer';
+            item.hitArea = new PIXI.Rectangle(-def.w / 2, -def.h / 2, def.w, def.h);
+            item.on('pointerover', () => selectMenuItem(i));
+            item.on('pointerdown', (e) => {
+                e.stopPropagation();
+                selectMenuItem(i);
+                chooseMenuItem();
+            });
+            mainMenuArt.addChild(item);
+            return { ...def, item, glow, highlight: i === menu.index ? 1 : 0 };
+        }));
+
+        function selectMenuItem(index) {
+            if (menu.index === index) return;
+            menu.index = index;
+            blip(500 + index * 80, 0.05);
+        }
+
+        function moveMenuSelection(step) {
+            selectMenuItem((menu.index + step + menuItems.length) % menuItems.length);
+        }
+
+        function chooseMenuItem() {
+            const item = menuItems[menu.index];
+            if (item.id === 'explore') {
+                startExplore();
+            } else {
+                showToast(item.label + ' is coming soon!');
+                blip(330, 0.12, 'triangle');
+            }
+        }
+
+        // A short message that pops up at the bottom of the screen and fades away
+        const toast = new PIXI.Container();
+        const toastBg = new PIXI.Graphics();
+        const toastText = new PIXI.Text({ text: '', style: { fontFamily: 'Arial', fontSize: 34, fontWeight: 'bold', fill: 0x1a1a2e } });
+        toastText.anchor.set(0.5);
+        toast.addChild(toastBg, toastText);
+        toast.visible = false;
+        let toastUntil = 0;
+
+        function showToast(message) {
+            toastText.text = message;
+            const w = toastText.width + 64, h = toastText.height + 32;
+            toastBg.clear().roundRect(-w / 2, -h / 2, w, h, 18).fill(0xffe45c).stroke({ width: 5, color: 0x1a1a2e });
+            toastUntil = performance.now() + 2200;
+            toast.visible = true;
+        }
+
+        const PAUSE_OPTIONS = [
+            { label: 'Keep Playing', action: () => resumeGame() },
+            { label: 'Reset Bear', action: () => { resetScene(); resumeGame(); } },
+            { label: 'Main Menu', action: () => showMainMenu() },
+        ];
+        const PAUSE_OPTION_W = 300, PAUSE_OPTION_H = 64, PAUSE_OPTION_GAP = 16;
+
+        const pauseMenu = new PIXI.Container();
+        const pauseShade = new PIXI.Graphics();
+        pauseShade.eventMode = 'static';
+        pauseShade.on('pointerdown', e => e.stopPropagation());
+        const pausePanel = new PIXI.Container();
+        pauseMenu.addChild(pauseShade, pausePanel);
+        pauseMenu.visible = false;
+        app.stage.addChild(pauseMenu, toast);
+
+        const pausePanelH = 110 + PAUSE_OPTIONS.length * (PAUSE_OPTION_H + PAUSE_OPTION_GAP);
+        pausePanel.addChild(new PIXI.Graphics()
+            .roundRect(-PAUSE_OPTION_W / 2 - 40, -pausePanelH / 2, PAUSE_OPTION_W + 80, pausePanelH, 24).fill(0x1a1a2e)
+            .roundRect(-PAUSE_OPTION_W / 2 - 40, -pausePanelH / 2, PAUSE_OPTION_W + 80, pausePanelH, 24).stroke({ width: 4, color: 0x487de7 }));
+        const pauseTitle = new PIXI.Text({ text: 'Paused', style: { fontFamily: 'Arial', fontSize: 40, fontWeight: 'bold', fill: 0xffffff } });
+        pauseTitle.anchor.set(0.5, 0);
+        pauseTitle.position.y = -pausePanelH / 2 + 24;
+        pausePanel.addChild(pauseTitle);
+
+        const pause = { index: 0 };
+        const pauseItems = PAUSE_OPTIONS.map((option, i) => {
+            const item = new PIXI.Container();
+            item.position.y = -pausePanelH / 2 + 100 + i * (PAUSE_OPTION_H + PAUSE_OPTION_GAP) + PAUSE_OPTION_H / 2;
+            const bg = new PIXI.Graphics();
+            const text = new PIXI.Text({ text: option.label, style: { fontFamily: 'Arial', fontSize: 28, fontWeight: 'bold', fill: 0xffffff } });
+            text.anchor.set(0.5);
+            item.addChild(bg, text);
+            item.eventMode = 'static';
+            item.cursor = 'pointer';
+            item.on('pointerover', () => selectPauseItem(i));
+            item.on('pointerdown', (e) => {
+                e.stopPropagation();
+                selectPauseItem(i);
+                choosePauseItem();
+            });
+            pausePanel.addChild(item);
+            return { item, bg, text, drawnSelected: null };
+        });
+
+        function selectPauseItem(index) {
+            if (pause.index === index) return;
+            pause.index = index;
+            blip(500 + index * 80, 0.05);
+        }
+
+        function movePauseSelection(step) {
+            selectPauseItem((pause.index + step + pauseItems.length) % pauseItems.length);
+        }
+
+        function choosePauseItem() {
+            PAUSE_OPTIONS[pause.index].action();
+        }
+
+        function clearInput() {
+            input = { xDirection: null, yDirection: null };
+            gamepadXDirection = null;
+            pointerDown = false;
+        }
+
+        function updateScreens() {
+            mainMenu.visible = game.state === 'menu';
+            pixiParent.visible = hud.visible = game.state !== 'menu';
+            pauseMenu.visible = game.state === 'paused';
+        }
+
+        function startExplore() {
+            if (!playedInitialAudio) playInitialAudio();
+            clearInput();
+            resetScene();
+            game.state = 'playing';
+            updateScreens();
+            updateCamera(true);
+        }
+
+        function showMainMenu() {
+            setEditMode(false);
+            saveBuild();
+            clearInput();
+            game.state = 'menu';
+            updateScreens();
+        }
+
+        function pauseGame() {
+            if (game.state !== 'playing') return;
+            clearInput();
+            if (editor.dragging && editor.held) dropHeld();
+            pause.index = 0;
+            game.state = 'paused';
+            updateScreens();
+            blip(390, 0.08, 'triangle');
+        }
+
+        function resumeGame() {
+            clearInput();
+            game.state = 'playing';
+            updateScreens();
+        }
+
+        function layoutMenus() {
+            const { width, height } = app.screen;
+            // The drawing has a white background, so white bars fill any leftover space around it
+            mainMenuBackdrop.clear().rect(0, 0, width, height).fill(0xffffff);
+            const scale = Math.min(width / MENU_ART.w, height / MENU_ART.h);
+            mainMenuArt.scale.set(scale);
+            mainMenuArt.position.set((width - MENU_ART.w * scale) / 2, (height - MENU_ART.h * scale) / 2);
+            pauseShade.clear().rect(0, 0, width, height).fill({ color: 0x000000, alpha: 0.5 });
+            pausePanel.scale.set(Math.min(1.4, Math.max(0.7, height / VIEW_HEIGHT)));
+            pausePanel.position.set(width / 2, height / 2);
+            toast.scale.set(Math.min(1.4, Math.max(0.6, height / VIEW_HEIGHT)));
+            toast.position.set(width / 2, height - 80 * toast.scale.y);
+        }
+        app.renderer.on('resize', layoutMenus);
+        layoutMenus();
+        updateScreens();
+
+        function updateMenus(now) {
+            if (game.state === 'menu') {
+                // The selected button grows, wiggles a little and glows
+                menuItems.forEach((m, i) => {
+                    m.highlight += ((i === menu.index ? 1 : 0) - m.highlight) * 0.2;
+                    const h = m.highlight;
+                    m.glow.alpha = h * (0.8 + 0.2 * Math.sin(now / 180));
+                    m.item.scale.set(1 + h * (0.08 + 0.015 * Math.sin(now / 220)));
+                    m.item.rotation = h * 0.02 * Math.sin(now / 300);
+                });
+            }
+            if (game.state === 'paused') {
+                pauseItems.forEach((p, i) => {
+                    const selected = i === pause.index;
+                    if (p.drawnSelected !== selected) {
+                        p.bg.clear().roundRect(-PAUSE_OPTION_W / 2, -PAUSE_OPTION_H / 2, PAUSE_OPTION_W, PAUSE_OPTION_H, 14)
+                            .fill(selected ? 0xffe45c : 0x0f3460);
+                        p.bg.roundRect(-PAUSE_OPTION_W / 2, -PAUSE_OPTION_H / 2, PAUSE_OPTION_W, PAUSE_OPTION_H, 14)
+                            .stroke({ width: 3, color: selected ? 0xffffff : 0x487de7 });
+                        p.text.style.fill = selected ? 0x1a1a2e : 0xffffff;
+                        p.drawnSelected = selected;
+                    }
+                    const target = selected ? 1.06 + 0.02 * Math.sin(now / 200) : 1;
+                    p.item.scale.set(p.item.scale.x + (target - p.item.scale.x) * 0.25);
+                });
+            }
+            if (toast.visible) {
+                const left = toastUntil - now;
+                toast.alpha = Math.min(1, left / 400);
+                if (left <= 0) toast.visible = false;
             }
         }
 
@@ -1232,8 +1470,10 @@
         app.ticker.add(() => {
             const now = performance.now();
             pollGamepads(now);
+            updateMenus(now);
+            if (game.state === 'menu') return;
 
-            if (!editor.active) {
+            if (game.state === 'playing' && !editor.active) {
                 const xDirection = input.xDirection ?? gamepadXDirection;
                 if (xDirection !== null || input.yDirection !== null) {
                     moveCar(xDirection, input.yDirection)
@@ -1299,6 +1539,24 @@
         const CURSOR_REPEAT_RATE = 90;
         let cursorRepeat = { key: null, next: 0 };
 
+        // True once when a direction is first pushed, then again every so often while it's held
+        function repeatedMove(dx, dy, now) {
+            const key = dx || dy ? dx + ',' + dy : null;
+            if (!key) {
+                cursorRepeat.key = null;
+                return false;
+            }
+            if (key !== cursorRepeat.key) {
+                cursorRepeat = { key, next: now + CURSOR_REPEAT_DELAY };
+                return true;
+            }
+            if (now >= cursorRepeat.next) {
+                cursorRepeat.next = now + CURSOR_REPEAT_RATE;
+                return true;
+            }
+            return false;
+        }
+
         function pollGamepads(now) {
             const pads = navigator.getGamepads ? navigator.getGamepads() : [];
             let dx = 0, dy = 0;
@@ -1317,26 +1575,30 @@
             const previous = previousGamepadButtons;
             const justPressed = (i) => pressed[i] && !previous[i];
             previousGamepadButtons = pressed;
-            if (pressed.some(Boolean) && !playedInitialAudio) {
-                playInitialAudio();
+
+            if (game.state === 'menu') {
+                if (repeatedMove(0, dy, now)) moveMenuSelection(dy);
+                if (justPressed(GAMEPAD_BUTTON.A) || justPressed(GAMEPAD_BUTTON.START)) chooseMenuItem();
+                return;
+            }
+            if (game.state === 'paused') {
+                if (repeatedMove(0, dy, now)) movePauseSelection(dy);
+                if (justPressed(GAMEPAD_BUTTON.A)) choosePauseItem();
+                else if (justPressed(GAMEPAD_BUTTON.B) || justPressed(GAMEPAD_BUTTON.START)) resumeGame();
+                return;
+            }
+
+            if (justPressed(GAMEPAD_BUTTON.START)) {
+                pauseGame();
+                return;
             }
             if (justPressed(GAMEPAD_BUTTON.Y)) toggleEditMode();
             if (justPressed(GAMEPAD_BUTTON.SELECT)) toggleDebug();
-            if (justPressed(GAMEPAD_BUTTON.START)) resetScene();
 
             if (editor.active) {
                 gamepadXDirection = null;
                 // Move the cursor one square per press, repeating while held
-                const key = dx || dy ? dx + ',' + dy : null;
-                if (key && key !== cursorRepeat.key) {
-                    moveCursor(dx, dy);
-                    cursorRepeat = { key, next: now + CURSOR_REPEAT_DELAY };
-                } else if (key && now >= cursorRepeat.next) {
-                    moveCursor(dx, dy);
-                    cursorRepeat.next = now + CURSOR_REPEAT_RATE;
-                } else if (!key) {
-                    cursorRepeat.key = null;
-                }
+                if (repeatedMove(dx, dy, now)) moveCursor(dx, dy);
                 if (justPressed(GAMEPAD_BUTTON.A)) editPrimary();
                 if (justPressed(GAMEPAD_BUTTON.B)) editDelete();
                 if (justPressed(GAMEPAD_BUTTON.X)) editGrab();
@@ -1352,6 +1614,7 @@
         }
 
         async function onPointerEvent(e) {
+            if (game.state !== 'playing') return;
             if (editor.active) {
                 // Moving over the button bar or the parts bar shouldn't drag the cursor along
                 const overHud = e.global.y < TOP_BAR_HEIGHT || e.global.y > app.screen.height - HUD_PANEL_HEIGHT;
@@ -1380,9 +1643,7 @@
         app.stage.eventMode = 'static'
         app.stage.hitArea = app.screen
         app.stage.on('pointerdown', async (e) => {
-            if (!playedInitialAudio) {
-                playInitialAudio();
-            }
+            if (game.state !== 'playing') return;
             if (editor.active) {
                 setCursorFromWorld(e.getLocalPosition(pixiParent));
                 if (e.button === 2) {
@@ -1410,24 +1671,39 @@
         app.stage.on('pointermove', onPointerEvent)
         app.canvas.addEventListener('contextmenu', e => e.preventDefault());
         app.canvas.addEventListener('wheel', (e) => {
-            if (!editor.active) return;
+            if (game.state !== 'playing' || !editor.active) return;
             e.preventDefault();
             cycleTile(e.deltaY > 0 ? 1 : -1);
         }, { passive: false });
 
         document.addEventListener('keydown', (e) => {
-            if (!playedInitialAudio) {
-                playInitialAudio();
-            }
             const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-            if (key === 'e' && !e.repeat) {
+            if (key === 'f' && !e.repeat) {
+                toggleFullscreen();
+                return;
+            }
+            if (game.state !== 'playing') {
+                const choose = game.state === 'menu' ? chooseMenuItem : choosePauseItem;
+                const move = game.state === 'menu' ? moveMenuSelection : movePauseSelection;
+                if (key === 'ArrowUp' || key === 'ArrowDown') {
+                    e.preventDefault();
+                    move(key === 'ArrowUp' ? -1 : 1);
+                } else if ((key === ' ' || key === 'Enter') && !e.repeat) {
+                    e.preventDefault();
+                    choose();
+                } else if (key === 'Escape' && game.state === 'paused' && !e.repeat) {
+                    resumeGame();
+                }
+                return;
+            }
+            if (key === 'Escape' && !e.repeat) {
+                pauseGame();
+            } else if (key === 'e' && !e.repeat) {
                 toggleEditMode();
             } else if (key === 'd' && !e.repeat) {
                 toggleDebug();
             } else if (key === 'r' && !e.repeat) {
                 resetScene();
-            } else if (key === 'f' && !e.repeat) {
-                toggleFullscreen();
             } else if (editor.active) {
                 const moves = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
                 if (moves[key]) {
@@ -1476,7 +1752,7 @@
         initScene();
 
         // Handy for poking at the game from the browser console
-        window.bearGame = { engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
+        window.bearGame = { game, menu, startExplore, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
     </script>
 </body>
 

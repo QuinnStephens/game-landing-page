@@ -2,6 +2,16 @@
 
 A Pixi + Matter.js physics game. It's a single static `index.html` with assets in `public/`, so there's no build step.
 
+## Main menu
+
+The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** starts the game; **Creative** and **Survival** say "coming soon" for now.
+
+The menu art lives in `public/img/menu/`: `background.jpg` and one PNG per button, cut from the layers of the original drawing, plus a `-glow.png` for each button's highlight. Button positions in `index.html` (`MENU_BUTTONS`) are the layer positions in that 2224x1668 drawing.
+
+## Pausing
+
+Press Esc or Start (or the **Pause** button) to pause. The pause menu has **Keep Playing**, **Reset Bear** and **Main Menu**. B, Start or Esc closes it.
+
 ## Controls
 
 | Action | Keyboard | Controller (Steam Deck, Xbox, etc.) |
@@ -9,18 +19,19 @@ A Pixi + Matter.js physics game. It's a single static `index.html` with assets i
 | Drive left / right | Arrow keys | Left stick or D-pad |
 | Jump | Up arrow | A or D-pad up |
 | Spawn a letter block | Space | X |
-| Creative mode on / off | E | Y |
+| Pause menu | Esc | Start (Menu) |
+| Build mode on / off | E | Y |
 | Toggle debug view | D | Select (View) |
-| Reset the bear (your build stays) | R | Start (Menu) |
+| Reset the bear (your build stays) | R | Pause menu > Reset Bear |
 | Full screen on / off | F | |
 
 The game fills the browser window, and everything (including the buttons along the top) is drawn by Pixi on one canvas.
 
 The bear is fenced in: walls on both sides, the ground below and a cloud ceiling above.
 
-## Creative mode
+## Build mode
 
-Creative mode pauses physics so you can build. A yellow square marks the cursor, and the bar at the bottom shows the piece you're placing.
+Build mode pauses physics so you can build. A yellow square marks the cursor, and the bar at the bottom shows the piece you're placing.
 
 | Action | Keyboard | Controller | Mouse |
 | --- | --- | --- | --- |
