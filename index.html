@@ -699,15 +699,17 @@
             });
         }
 
-        function moveCar(xDirection, yDirection) {
-            let forceX = 0, forceY = 0
-            if (xDirection === "left") { forceX = -1; }
-            if (xDirection === "right") { forceX = 1; }
-            if (xDirection === "up") { forceY = -1; }
-            if (xDirection === "down") { forceY = 0; }
-
+        // Both wheels drive (like a motor), so the car rolls along instead of popping a wheelie and flipping over.
+        // A small push on the body too, so it can still steer in the air
+        const WHEEL_SPIN = MAX_VELOCITY_X / 30;
+        function moveCar(xDirection) {
+            const direction = xDirection === "left" ? -1 : xDirection === "right" ? 1 : 0;
+            if (!direction) return;
+            car.wheels.forEach(wheel => {
+                Body.setAngularVelocity(wheel, wheel.angularVelocity + (direction * WHEEL_SPIN - wheel.angularVelocity) * 0.2);
+            });
             if (Math.abs(car.chassis.velocity.x) < MAX_VELOCITY_X) {
-                Body.applyForce(car.chassis, car.chassis.position, { x: forceX * 0.01, y: forceY * 0.2 })
+                Body.applyForce(car.chassis, car.chassis.position, { x: direction * 0.004, y: 0 });
             }
         }
 
@@ -723,6 +725,11 @@
 
         // Keeps the bear inside the fence: no rocketing up by mashing jump, and a rescue if it ever slips out
         function limitCar() {
+            // Leaning further than this, the car gently tips itself back upright
+            const tilt = car.chassis.angle;
+            if (Math.abs(tilt) > 0.3) {
+                Body.setAngularVelocity(car.chassis, car.chassis.angularVelocity * 0.9 - Math.sign(tilt) * 0.004);
+            }
             car.bodies.forEach(body => {
                 if (body.velocity.y < -MAX_RISE_SPEED) {
                     Body.setVelocity(body, { x: body.velocity.x, y: -MAX_RISE_SPEED });
@@ -1188,7 +1195,7 @@
                     bg.roundRect(3, 3, SLOT - 6, SLOT - 6, 6).fill(selected ? 0xfff6c4 : 0x3d5288);
                 });
             } else if (game.mode === 'survival') {
-                hintText.text = 'Jump on the blue blobs and get to the star!';
+                hintText.text = 'Squish the blue blobs with your car and get to the star!';
             } else {
                 hintText.text = 'Press Y (controller) or E (keyboard) for Build Mode';
             }
@@ -1353,7 +1360,8 @@
             enemyLayer.addChild(sprite);
             // Not in the physics world: it's only used to check whether the bear touches the blob
             const body = Bodies.circle(0, 0, ENEMY_HEIGHT * 0.4, { isSensor: true, isStatic: true });
-            return { on, from, to, sprite, scale, body, speed: 1.4 + (i % 3) * 0.4, start: (from + to) / 2, x: 0, direction: 1, dead: false, squash: 0 };
+            return { on, from, to, sprite, scale, body, speed: 1.4 + (i % 3) * 0.4, start: (from + to) / 2, x: 0, direction: 1, dead: false, squash: 0,
+                hopPower: 14 + (i % 3) * 2, hopY: 0, hopSpeed: 0, nextHop: 0, index: i };
         });
 
         function drawGoal() {
@@ -1376,12 +1384,15 @@
 
         function restartSurvival() {
             survival.state = 'running';
+            survival.tick = 0;
             survival.lastGrounded = survival.lastJump = -99;
             enemies.forEach(enemy => {
                 enemy.x = enemy.start;
                 enemy.direction = 1;
                 enemy.dead = false;
                 enemy.squash = 0;
+                enemy.hopY = enemy.hopSpeed = 0;
+                enemy.nextHop = 60 + (enemy.index * 37) % 120;
                 enemy.sprite.visible = true;
                 enemy.sprite.alpha = 1;
             });
@@ -1499,10 +1510,22 @@
                 enemy.x += enemy.speed * enemy.direction;
                 if (enemy.x > enemy.to) enemy.direction = -1;
                 if (enemy.x < enemy.from) enemy.direction = 1;
-                const y = surfaceY(enemy.on, enemy.x);
-                const hop = Math.abs(Math.sin(now / 160 + enemy.start));
-                enemy.sprite.position.set(enemy.x, y - hop * 6);
-                enemy.sprite.scale.set(enemy.scale * -enemy.direction * (1 + 0.05 * hop), enemy.scale * (1 - 0.05 * hop));
+                // Every few seconds a blob crouches and hops up high enough to bonk the character
+                if (enemy.hopY === 0 && survival.tick >= enemy.nextHop) {
+                    enemy.hopSpeed = -enemy.hopPower;
+                    enemy.nextHop = survival.tick + 150 + Math.floor(Math.random() * 120);
+                }
+                if (enemy.hopSpeed !== 0) {
+                    enemy.hopY += enemy.hopSpeed;
+                    enemy.hopSpeed += 0.6;
+                    if (enemy.hopY >= 0) enemy.hopY = enemy.hopSpeed = 0;
+                }
+                const y = surfaceY(enemy.on, enemy.x) + enemy.hopY;
+                const wobble = enemy.hopY < 0 ? 0 : Math.abs(Math.sin(now / 160 + enemy.start));
+                const crouch = enemy.hopY === 0 ? Math.max(0, 1 - (enemy.nextHop - survival.tick) / 20) : 0;
+                const stretch = enemy.hopY < 0 ? 0.15 : -0.05 * wobble - 0.25 * crouch;
+                enemy.sprite.position.set(enemy.x, y - wobble * 6);
+                enemy.sprite.scale.set(enemy.scale * -enemy.direction * (1 - stretch * 0.6), enemy.scale * (1 + stretch));
                 Body.setPosition(enemy.body, { x: enemy.x, y: y - ENEMY_HEIGHT * 0.42 });
                 if (survival.state !== 'running') return;
 
@@ -2142,7 +2165,7 @@
                 const canDrive = game.mode !== 'survival' || survival.state === 'running';
                 const xDirection = input.xDirection ?? gamepadXDirection;
                 if (canDrive && (xDirection !== null || input.yDirection !== null)) {
-                    moveCar(xDirection, input.yDirection)
+                    moveCar(xDirection)
                 }
                 if (game.mode !== 'survival' || survival.state !== 'hurt') {
                     Engine.update(engine, 1000 / 60);
@@ -2442,7 +2465,7 @@
         initScene();
 
         // Handy for poking at the game from the browser console
-        window.bearGame = { app, game, survival, enemies, startSurvival, restartSurvival, burstSparkles, get level() { return level; }, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
+        window.bearGame = { app, game, survival, enemies, onSolidGround, survivalSolids, Query, Body, startSurvival, restartSurvival, burstSparkles, get level() { return level; }, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
     </script>
 </body>
 
