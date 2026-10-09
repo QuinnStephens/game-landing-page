@@ -133,12 +133,12 @@
     <div class="hero" id="hero" hidden>
       <h1 id="title"></h1>
       <p id="tagline"></p>
-      <button class="play" id="playBtn" type="button"><kbd>A</kbd> Play</button>
+      <button class="play" id="playBtn" type="button"><kbd id="playGlyph">A</kbd> Play</button>
     </div>
 
     <div>
       <div class="shelf" id="shelf" role="listbox" aria-label="Games"></div>
-      <div class="hint"><span><b>&larr; &rarr;</b> Browse</span><span><b>A / &#10005;</b> Play</span></div>
+      <div class="hint"><span><b>&larr; &rarr;</b> Browse</span><span><b id="hintGlyph">A</b> Play</span><span id="swapHint" hidden><b id="swapKey">Select</b> Change button icons</span></div>
     </div>
   </div>
 
@@ -235,26 +235,81 @@
   }
   function poll(now) {
     const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
-    let left = false, right = false, go = false;
+    let left = false, right = false, go = false, sel = false;
+    if (!!pads.length !== connected) { connected = !!pads.length; applyGlyph(); }
+    if (pads[0]) {
+      const kind = identify(pads[0].id);
+      if (kind !== detected) {
+        detected = kind;
+        try { localStorage.setItem(PAD_KEY, kind); } catch (e) {}
+        applyGlyph();
+      }
+    }
     for (const p of pads) {
       left  = left  || !!p.buttons[14]?.pressed || p.axes[0] < -0.6;
       right = right || !!p.buttons[15]?.pressed || p.axes[0] > 0.6;
       go    = go    || !!p.buttons[0]?.pressed;
+      sel   = sel   || !!p.buttons[8]?.pressed;
     }
     if (games.length && !launching) {
       repeat('left', left, now, () => select(index - 1));
       repeat('right', right, now, () => select(index + 1));
       if (go && !held.go) launch();
     }
+    if (sel && !held.sel) cycleOverride();
+    held.sel = sel;
     held.go = go;
     requestAnimationFrame(poll);
   }
-  const padUI = (on, name) => {
-    document.body.classList.toggle('pad-on', on);
-    $('padText').textContent = on ? 'Controller connected' : 'Press any controller button to connect';
+  /* Controller type -> confirm-button glyph.
+     Chrome reports the pad's id string; vendor ids: 054c Sony, 045e Microsoft, 057e Nintendo, 28de Valve.
+     Note: Steam Input often presents ANY pad as a virtual Xbox 360 controller. If the icon is wrong,
+     press Select/Share to cycle it manually, or load the page once with ?pad=ps (or xbox, switch, auto). */
+  const PADS = {
+    ps:      { name: 'PlayStation', confirm: '\u2715', alt: 'Share' },
+    xbox:    { name: 'Xbox',        confirm: 'A',       alt: 'View' },
+    switch:  { name: 'Nintendo',    confirm: 'B',       alt: '\u2212' },
+    steam:   { name: 'Steam',       confirm: 'A',       alt: 'View' },
+    generic: { name: 'Gamepad',     confirm: 'A',       alt: 'Select' }
   };
-  addEventListener('gamepadconnected', () => padUI(true));
-  addEventListener('gamepaddisconnected', () => padUI(false));
+  const PAD_KEY = 'launcher:pad', OVR_KEY = 'launcher:padOverride';
+  let detected = 'generic', override = null, connected = false;
+  try {
+    detected = localStorage.getItem(PAD_KEY) || 'generic';
+    const q = new URLSearchParams(location.search).get('pad');
+    if (q && PADS[q]) localStorage.setItem(OVR_KEY, q);
+    if (q === 'auto') localStorage.removeItem(OVR_KEY);
+    override = localStorage.getItem(OVR_KEY);
+  } catch (e) {}
+  if (!PADS[detected]) detected = 'generic';
+  if (!PADS[override]) override = null;
+
+  function identify(id) {
+    id = id.toLowerCase();
+    if (/054c|playstation|dualshock|dualsense|wireless controller/.test(id)) return 'ps';
+    if (/057e|nintendo|switch|pro controller/.test(id)) return 'switch';
+    if (/28de|steam|valve/.test(id)) return 'steam';
+    if (/045e|xbox|xinput|microsoft/.test(id)) return 'xbox';
+    return 'generic';
+  }
+  function applyGlyph() {
+    const p = PADS[override || detected];
+    $('playGlyph').textContent = p.confirm;
+    $('hintGlyph').textContent = p.confirm;
+    $('swapKey').textContent = p.alt;
+    $('swapHint').hidden = !connected;
+    document.body.classList.toggle('pad-on', connected);
+    $('padText').textContent = connected
+      ? 'Controller connected \u00b7 ' + p.name + (override ? ' (manual)' : '')
+      : 'Press any controller button to connect';
+  }
+  function cycleOverride() {
+    const cycle = [null, 'ps', 'xbox', 'switch'];
+    override = cycle[(cycle.indexOf(override) + 1) % cycle.length];
+    try { override ? localStorage.setItem(OVR_KEY, override) : localStorage.removeItem(OVR_KEY); } catch (e) {}
+    applyGlyph();
+  }
+  applyGlyph();
 
   requestAnimationFrame(poll);
   load();
