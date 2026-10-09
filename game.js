@@ -6,7 +6,7 @@
   const app = new PIXI.Application();
   await app.init({
     resizeTo: window,
-    background: '#000000',
+    background: '#ffffff',
     antialias: true,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
@@ -133,10 +133,12 @@
     // Keep the world a comfortable size on phones and big screens alike.
     zoom = Math.max(0.55, Math.min(1.3, Math.min(W, H) / 650));
 
-    const s = Math.min(W / tex.title.width, H / tex.title.height);
+    // Leave a strip at the bottom so "Tap to play!" doesn't cover the drawing.
+    const strip = Math.max(70, H * 0.12);
+    const s = Math.min(W / tex.title.width, (H - strip) / tex.title.height);
     titleImg.scale.set(s);
-    titleImg.position.set(W / 2, H / 2);
-    tapToPlay.position.set(W / 2, H - Math.max(50, H * 0.09));
+    titleImg.position.set(W / 2, (H - strip) / 2);
+    tapToPlay.position.set(W / 2, H - strip / 2);
     tapToPlay.style.fontSize = Math.min(48, W / 11);
 
     soundBtn.position.set(W - 42, 42);
@@ -230,6 +232,7 @@
     state = s;
     stateTime = 0;
     titleLayer.visible = s === 'title';
+    worldLayer.visible = s !== 'title';
     hud.visible = s === 'play';
     winLayer.visible = s === 'win';
     again.visible = false;
