@@ -311,6 +311,13 @@
   }
   applyGlyph();
 
+  // Coming back via Back restores this page from the browser's back/forward cache with the
+  // fade-out state still applied, which leaves only the background visible. Reset it.
+  addEventListener('pageshow', () => {
+    launching = false;
+    document.body.classList.remove('launching');
+  });
+
   requestAnimationFrame(poll);
   load();
 })();
