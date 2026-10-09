@@ -183,6 +183,35 @@
   window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => keys.clear());
 
+  // Gamepads (Steam Deck, Xbox/PlayStation controllers): stick or d-pad to walk,
+  // A or Start to begin and continue, Y to toggle sound.
+  const pad = { x: 0, y: 0, held: new Set() };
+  function pollGamepads() {
+    pad.x = 0; pad.y = 0;
+    const pressedNow = new Set();
+    for (const gp of navigator.getGamepads ? navigator.getGamepads() : []) {
+      if (!gp) continue;
+      const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+      if (Math.hypot(ax, ay) > 0.2) { pad.x += ax; pad.y += ay; }
+      const btn = (i) => gp.buttons[i] && gp.buttons[i].pressed;
+      if (btn(14)) pad.x -= 1;
+      if (btn(15)) pad.x += 1;
+      if (btn(12)) pad.y -= 1;
+      if (btn(13)) pad.y += 1;
+      for (const i of [0, 3, 9]) if (btn(i)) pressedNow.add(i);
+    }
+    // React only on the moment a button goes down, not while it's held.
+    for (const i of pressedNow) {
+      if (pad.held.has(i)) continue;
+      if (i === 3) toggleMute(); else press();
+    }
+    pad.held = pressedNow;
+  }
+  window.addEventListener('gamepadconnected', () => {
+    tapToPlay.text = 'Press A to play!';
+    again.text = 'Press A for more Momos!';
+  });
+
   const pointer = { down: false, x: 0, y: 0, id: null };
   canvas.style.touchAction = 'none';
   canvas.addEventListener('pointerdown', (e) => {
@@ -433,6 +462,8 @@
     if (keys.has('arrowright') || keys.has('d')) ix += 1;
     if (keys.has('arrowup') || keys.has('w')) iy -= 1;
     if (keys.has('arrowdown') || keys.has('s')) iy += 1;
+    ix += pad.x;
+    iy += pad.y;
 
     if (pointer.down && !(ix || iy)) {
       // Walk toward wherever the finger (or mouse) is.
@@ -624,6 +655,7 @@
 
   // ---------- loop ----------
   app.ticker.add((ticker) => {
+    pollGamepads();
     update(Math.min(0.05, ticker.deltaMS / 1000));
     render();
   });

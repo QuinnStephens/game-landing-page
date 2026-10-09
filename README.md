@@ -9,6 +9,7 @@ Art is from the title screen drawing (`assets/`), with Jojo and Momo cut out of 
 ## Play
 
 - Keyboard: arrow keys or WASD. `M` toggles sound.
+- Controller (Steam Deck, Xbox, PlayStation): left stick or d-pad to walk, A or Start to begin and continue, Y toggles sound.
 - Touch or mouse: hold your finger anywhere and Jojo walks toward it.
 - Yellow arrows at the screen edge point toward Momos you haven't found yet.
 
