@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Valley of the Omen: Return (Dev)",
+    "tagline": "A woman on a mission. A valley swarming with cursed monsters. A boomerang.",
+    "url": "https://omen.quinnstephens.com",
+    "image": "images/valley.png"
+  },
+  {
+    "title": "Valley of the Omen: Return (Alpha)",
+    "tagline": "Something that's not finished yet.",
+    "url": "http://omenalpha.quinnstephens.com",
+    "image": "images/valley-alpha.png"
+  },
+  {
+    "title": "My Kingdom",
+    "tagline": "Be a bear, be a human, make this kingdom yours.",
+    "url": "https://yetz-game.pages.dev",
+    "image": "images/kingdom.png"
+  },
+  {
+    "title": "In My Mom's Tummy",
+    "tagline": "Enjoy the womb.",
+    "url": "https://in-my-moms-tummy.pages.dev",
+    "image": "images/tummy.png"
+  },
+  {
+    "title": "Debonair Bear Adventures",
+    "tagline": "Style, flair, and panache might just save the world.",
+    "url": "https://quinnstephens.itch.io/debonair-bear-adventures",
+    "image": "images/debonair.png"
+  }
+]

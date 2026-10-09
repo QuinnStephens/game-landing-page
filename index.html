@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Playtest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #14112b;
+    --panel: #221d44;
+    --text: #efeaff;
+    --muted: #a49dc9;
+    --accent: #ffc53d;
+    --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--body);
+    overflow: hidden;
+    cursor: none; /* TV use; cursor returns on mouse move */
+  }
+  body.mouse { cursor: default; }
+
+  /* Backdrop: two layers crossfade when selection changes */
+  .bg {
+    position: fixed; inset: 0;
+    background-size: cover; background-position: center;
+    opacity: 0; transition: opacity .6s ease;
+  }
+  .bg.on { opacity: 1; }
+  .shade {
+    position: fixed; inset: 0;
+    background:
+      linear-gradient(90deg, rgba(20,17,43,.92) 0%, rgba(20,17,43,.55) 38%, rgba(20,17,43,0) 70%),
+      linear-gradient(0deg, var(--ink) 0%, rgba(20,17,43,.85) 24%, rgba(20,17,43,0) 55%);
+  }
+
+  .app {
+    position: relative; height: 100%;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 4.5vh 5vw 4vh;
+    transition: opacity .25s ease, transform .25s ease;
+  }
+  body.launching .app { opacity: 0; transform: scale(1.03); }
+
+  .top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: clamp(14px, 1.6vh, 20px); }
+  .brand { font-family: var(--display); font-weight: 800; font-size: clamp(18px, 2.6vh, 30px); color: var(--text); letter-spacing: -.01em; }
+  .dot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; background: var(--muted); margin-right: .5em; }
+  .pad-on .dot { background: var(--accent); }
+
+  .hero { max-width: 44rem; margin-bottom: 4vh; }
+  .hero h1 {
+    font-family: var(--display); font-weight: 800;
+    font-size: clamp(40px, 9vh, 104px); line-height: .95; letter-spacing: -.03em;
+    text-wrap: balance;
+  }
+  .hero p { margin-top: 1.6vh; font-size: clamp(16px, 2.4vh, 28px); line-height: 1.4; color: #d9d3f5; max-width: 34rem; }
+  .play {
+    display: inline-flex; align-items: center; gap: .7em; margin-top: 3vh;
+    background: var(--accent); color: #2a1d00; font-weight: 600;
+    font-size: clamp(16px, 2.3vh, 26px); padding: .6em 1.3em; border-radius: 999px; border: 0;
+    font-family: var(--body);
+  }
+  .play kbd {
+    font-family: var(--body); font-weight: 600; font-size: .8em;
+    background: rgba(42,29,0,.16); border-radius: 50%; width: 1.7em; height: 1.7em;
+    display: inline-grid; place-items: center;
+  }
+
+  /* Shelf */
+  .shelf {
+    display: flex; gap: 1.4vw; overflow-x: auto; scrollbar-width: none;
+    padding: 2.2vh 5vw 3vh; margin: 0 -5vw;
+    scroll-behavior: smooth;
+  }
+  .shelf::-webkit-scrollbar { display: none; }
+  .tile {
+    flex: 0 0 auto; width: clamp(200px, 19vw, 420px); aspect-ratio: 16 / 9;
+    border-radius: 14px; position: relative; overflow: hidden;
+    background-size: cover; background-position: center;
+    border: 0; padding: 0; color: inherit; font: inherit; text-align: left;
+    opacity: .62; transform: scale(.94);
+    transition: transform .18s ease, opacity .18s ease, box-shadow .18s ease;
+  }
+  .tile::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(0deg, rgba(20,17,43,.85), rgba(20,17,43,0) 55%);
+  }
+  .tile .name {
+    position: absolute; left: 1em; right: 1em; bottom: .8em; z-index: 1;
+    font-family: var(--display); font-weight: 800; font-size: clamp(15px, 2.2vh, 26px);
+    letter-spacing: -.01em; line-height: 1.1;
+  }
+  .tile .initial {
+    position: absolute; right: .25em; top: -.12em; z-index: 0;
+    font-family: var(--display); font-weight: 800; font-size: clamp(60px, 11vh, 140px);
+    color: rgba(255,255,255,.16); line-height: 1;
+  }
+  .tile.sel {
+    opacity: 1; transform: scale(1.04);
+    box-shadow: 0 0 0 4px var(--ink), 0 0 0 7px var(--accent), 0 18px 40px rgba(0,0,0,.5);
+  }
+
+  .hint { color: var(--muted); font-size: clamp(13px, 1.7vh, 20px); display: flex; gap: 2em; }
+  .hint b { color: var(--text); font-weight: 600; }
+
+  .empty { align-self: center; margin: auto; max-width: 30rem; text-align: center; color: var(--muted); font-size: 1.1rem; line-height: 1.5; }
+  .empty h1 { color: var(--text); font-family: var(--display); margin-bottom: .5em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="bg" id="bgA"></div>
+  <div class="bg" id="bgB"></div>
+  <div class="shade"></div>
+
+  <div class="app" id="app">
+    <div class="top">
+      <div class="brand">Playtest</div>
+      <div id="padStatus"><span class="dot"></span><span id="padText">Press any controller button to connect</span></div>
+    </div>
+
+    <div class="hero" id="hero" hidden>
+      <h1 id="title"></h1>
+      <p id="tagline"></p>
+      <button class="play" id="playBtn" type="button"><kbd>A</kbd> Play</button>
+    </div>
+
+    <div>
+      <div class="shelf" id="shelf" role="listbox" aria-label="Games"></div>
+      <div class="hint"><span><b>&larr; &rarr;</b> Browse</span><span><b>A / &#10005;</b> Play</span></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const shelf = $('shelf'), bgs = [$('bgA'), $('bgB')];
+  let games = [], index = 0, flip = 0, launching = false;
+  const SAVE_KEY = 'launcher:last';
+
+  const hue = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+  const art = (g) => {
+    if (g.image) return `url("${g.image}")`;
+    const h = hue(g.title);
+    return `linear-gradient(135deg, hsl(${h} 65% 42%), hsl(${(h + 55) % 360} 70% 22%))`;
+  };
+
+  async function load() {
+    try {
+      const res = await fetch('games.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(res.status);
+      games = (await res.json()).filter((g) => g.title && g.url);
+      if (!games.length) throw new Error('empty');
+    } catch (e) {
+      $('app').insertAdjacentHTML('beforeend',
+        '<div class="empty"><h1>No games found</h1>Add entries to games.json (each needs a title and url) and reload. If you opened this file directly from disk, host it instead: the browser blocks loading games.json from a local file.</div>');
+      return;
+    }
+    try { index = Math.min(+localStorage.getItem(SAVE_KEY) || 0, games.length - 1); } catch (e) {}
+    build();
+    select(index, true);
+  }
+
+  function build() {
+    games.forEach((g, i) => {
+      const t = document.createElement('button');
+      t.type = 'button'; t.className = 'tile'; t.setAttribute('role', 'option');
+      t.style.backgroundImage = art(g);
+      if (!g.image) {
+        const ini = document.createElement('span');
+        ini.className = 'initial'; ini.textContent = g.title.trim()[0].toUpperCase();
+        t.appendChild(ini);
+      }
+      const n = document.createElement('span');
+      n.className = 'name'; n.textContent = g.title;
+      t.appendChild(n);
+      t.addEventListener('click', () => (i === index ? launch() : select(i)));
+      shelf.appendChild(t);
+    });
+    $('hero').hidden = false;
+    $('playBtn').addEventListener('click', launch);
+  }
+
+  function select(i, instant) {
+    index = (i + games.length) % games.length;
+    const g = games[index];
+    [...shelf.children].forEach((el, k) => {
+      el.classList.toggle('sel', k === index);
+      el.setAttribute('aria-selected', k === index);
+    });
+    $('title').textContent = g.title;
+    $('tagline').textContent = g.tagline || '';
+    // crossfade backdrop
+    flip = 1 - flip;
+    bgs[flip].style.backgroundImage = art(g);
+    bgs[flip].classList.add('on');
+    bgs[1 - flip].classList.remove('on');
+    shelf.children[index].scrollIntoView({ inline: 'center', block: 'nearest', behavior: instant ? 'auto' : 'smooth' });
+    try { localStorage.setItem(SAVE_KEY, index); } catch (e) {}
+  }
+
+  function launch() {
+    if (launching || !games.length) return;
+    launching = true;
+    document.body.classList.add('launching');
+    setTimeout(() => { location.href = games[index].url; }, 260);
+  }
+
+  /* Keyboard (also covers Steam Input's default "desktop" layout, where the d-pad sends arrows and A sends Enter) */
+  addEventListener('keydown', (e) => {
+    if (!games.length) return;
+    if (e.key === 'ArrowLeft') { select(index - 1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight') { select(index + 1); e.preventDefault(); }
+    else if (e.key === 'Enter' || e.key === ' ') { launch(); e.preventDefault(); }
+  });
+  addEventListener('mousemove', () => document.body.classList.add('mouse'), { once: true });
+
+  /* Gamepad API */
+  const held = {};
+  function repeat(key, on, now, fn) {
+    if (!on) { delete held[key]; return; }
+    if (held[key] === undefined) { fn(); held[key] = now + 380; }
+    else if (now >= held[key]) { fn(); held[key] = now + 130; }
+  }
+  function poll(now) {
+    const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
+    let left = false, right = false, go = false;
+    for (const p of pads) {
+      left  = left  || !!p.buttons[14]?.pressed || p.axes[0] < -0.6;
+      right = right || !!p.buttons[15]?.pressed || p.axes[0] > 0.6;
+      go    = go    || !!p.buttons[0]?.pressed;
+    }
+    if (games.length && !launching) {
+      repeat('left', left, now, () => select(index - 1));
+      repeat('right', right, now, () => select(index + 1));
+      if (go && !held.go) launch();
+    }
+    held.go = go;
+    requestAnimationFrame(poll);
+  }
+  const padUI = (on, name) => {
+    document.body.classList.toggle('pad-on', on);
+    $('padText').textContent = on ? 'Controller connected' : 'Press any controller button to connect';
+  };
+  addEventListener('gamepadconnected', () => padUI(true));
+  addEventListener('gamepaddisconnected', () => padUI(false));
+
+  requestAnimationFrame(poll);
+  load();
+})();
+</script>
+</body>
+</html>
