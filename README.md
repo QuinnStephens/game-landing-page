@@ -2,6 +2,8 @@
 
 Walk Jojo around the jungle and find all the Momo monkeys. Each Momo you find follows you in a line; find them all to start a bigger jungle with more Momos.
 
+Built with plain JavaScript and [PixiJS](https://pixijs.com) loaded from the jsDelivr CDN.
+
 Art is from the title screen drawing (`assets/`), with Jojo and Momo cut out of it.
 
 ## Play
