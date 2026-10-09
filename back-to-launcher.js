@@ -1,7 +1,7 @@
 // Paste into each game (or load with <script src="...">).
 // Hold Select + Start (Share + Options on a PS4 pad) for 1 second to return to the launcher.
 (() => {
-  const LAUNCHER_URL = 'https://YOUR-LAUNCHER.pages.dev/'; // <- change this
+  const LAUNCHER_URL = 'https://quinns-game-landing-page.pages.dev/'; 
   const HOLD_MS = 1000;
   let since = null;
 
