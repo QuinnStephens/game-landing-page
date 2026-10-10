@@ -1,7 +1,7 @@
 // Escape the School: pick a girl, go to class, and try to sneak out while the
 // teacher writes 1000 tests on the chalkboard.
 // Plain canvas 2D, no libraries. The characters, cart, lockers and door are cut
-// out of Violeta's drawing (assets/); the hallway and classroom are drawn in
+// out of Mezzie's drawing (assets/); the hallway and classroom are drawn in
 // code with wobbly pencil lines to match.
 (() => {
   'use strict';
@@ -508,7 +508,7 @@
     drawSprite(c, IMG.teacher, 210, 690, 470, { bob: Math.abs(Math.sin(t * 1.3)) * 3 });
     drawSprite(c, IMG.girl1, 900, 680, 380, { tilt: Math.sin(t * 2) * 0.02 });
     drawSprite(c, IMG.girl2, 1080, 680, 360, { tilt: Math.sin(t * 2 + 1) * 0.02 });
-    c.font = font(30, 'normal'); c.fillText('by Violeta', 640, 250);
+    c.font = font(30, 'normal'); c.fillText('by Mezzie', 640, 250);
     c.restore();
     drawPrompts(c, [['confirm', 'Start'], ['fullscreen', 'Fullscreen']], W / 2, 600, 'center', 40);
   }

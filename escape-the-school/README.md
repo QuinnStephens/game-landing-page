@@ -1,6 +1,6 @@
 # Escape the School
 
-Violeta's game. Pick one of the two girls, walk down the hallway and into Room 9, and sit in the open seat next to the only other student. The teacher announces 1000 tests and turns to write them on the chalkboard, the other student falls asleep, and the teacher's not looking... escape the school!
+Mezzie's game. Pick one of the two girls, walk down the hallway and into Room 9, and sit in the open seat next to the only other student. The teacher announces 1000 tests and turns to write them on the chalkboard, the other student falls asleep, and the teacher's not looking... escape the school!
 
 - **The classroom** is seen from above, like Zelda. You always get caught just before the door. Say "Sorry, sir, I'll sit back down" and you can try again, or say "I'm escaping!" to run for it.
 - **The hallway chase** is side on. The teacher comes after you (he's slower than you), and the janitor is mopping between you and the hiding spots. He looks up every few seconds, with a "?" first as a warning: if you're in front of him and not hiding, he sees you. Get past him and hide in his cart or a locker, and the teacher walks right past.
@@ -24,7 +24,7 @@ Hold Select + Start to go back to the launcher.
 
 ## Art
 
-The characters and props are cut out of Violeta's drawing (still black and white, to be colored in later): the two girls, the teacher (from the front, and from behind writing on the board), the janitor, the sleeping student at her desk, the janitor's cart, the lockers and the classroom door. Each is a PNG in `assets/` and can be swapped for a colored version with the same name.
+The characters and props are cut out of Mezzie's drawing (still black and white, to be colored in later): the two girls, the teacher (from the front, and from behind writing on the board), the janitor, the sleeping student at her desk, the janitor's cart, the lockers and the classroom door. Each is a PNG in `assets/` and can be swapped for a colored version with the same name.
 
 The hallway, the classroom, the desks and the janitor's mop are drawn in code with wobbly pencil lines (the `Sketch` class in `game.js`) to match her style.
 
