@@ -12,6 +12,12 @@
     "image": "images/valley-alpha.png"
   },
   {
+    "title": "Escape the School",
+    "tagline": "1000 tests? No thank you.",
+    "url": "/escape-the-school/",
+    "image": "images/escape-the-school.png"
+  },
+  {
     "title": "Photo Taker",
     "tagline": "Take a picture of everything. Except the sleeping bear.",
     "url": "/photo-taker/",
