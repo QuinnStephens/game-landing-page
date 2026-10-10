@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Baba Boo Bee Ba</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #2b2622; overflow: hidden; }
+    #game { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+    #game canvas { display: block; touch-action: none; }
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #fbf6ec; font: 28px sans-serif; letter-spacing: 4px; }
+    #fs { position: fixed; top: 12px; right: 12px; width: 52px; height: 52px; border-radius: 12px;
+      border: 3px solid #2b2622; background: #fbf6ecdd; cursor: pointer; padding: 0; opacity: 0.75; }
+    #fs:hover { opacity: 1; }
+    #fs svg { width: 30px; height: 30px; }
+    #fs .exit { display: none; }
+    #fs.on .enter { display: none; }
+    #fs.on .exit { display: inline; }
+    #fs.on { opacity: 0.25; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="loading">LOADING...</div>
+  <button id="fs" title="Full screen (F or Start)" aria-label="Toggle full screen">
+    <svg class="enter" viewBox="0 0 24 24" fill="none" stroke="#2b2622" stroke-width="2.6" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    <svg class="exit" viewBox="0 0 24 24" fill="none" stroke="#2b2622" stroke-width="2.6" stroke-linecap="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+  </button>
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.20.1/dist/pixi.min.js"></script>
+  <script type="module" src="src/game.js"></script>
+</body>
+</html>
