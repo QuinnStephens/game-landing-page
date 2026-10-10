@@ -4,7 +4,7 @@ import { textSprite } from './crayon.js';
 import * as art from './art.js';
 import { LEVEL, GROUND_Y } from './level.js';
 
-const { W, H } = art;
+const { W, H, OX } = art;
 const GRAVITY = 2300;
 
 // ---------- app + scaling ----------
@@ -14,8 +14,8 @@ document.getElementById('game').appendChild(app.canvas);
 
 function fit() {
   const s = Math.min(window.innerWidth / W, window.innerHeight / H);
-  app.canvas.style.width = `${Math.floor(W * s)}px`;
-  app.canvas.style.height = `${Math.floor(H * s)}px`;
+  app.canvas.style.width = `${Math.round(W * s)}px`;
+  app.canvas.style.height = `${Math.round(H * s)}px`;
 }
 window.addEventListener('resize', fit);
 document.addEventListener('fullscreenchange', fit);
@@ -234,7 +234,7 @@ function Title() {
   pig.position.set(300, GROUND_Y + 4);
   const enemy = new PIXI.Sprite(T.enemy);
   enemy.anchor.set(0.5, 1); enemy.scale.set(110 / T.enemy.height);
-  enemy.position.set(990, GROUND_Y + 4);
+  enemy.position.set(W - 290, GROUND_Y + 4);
   const press = word('PRESS A TO START', 40, '#2b2622', { seed: 3 });
   press.position.set(W / 2, 520);
   root.addChild(title1, title2, pig, enemy, press);
@@ -432,10 +432,10 @@ function Space() {
   rocket.addChild(flame, ship);
   root.addChild(rocket);
   const zoom = word('ZOOM!', 70, '#f7d35c', { seed: 2, width: 10 });
-  zoom.position.set(560, 640); zoom.alpha = 0;
+  zoom.position.set(560 + OX, 640); zoom.alpha = 0;
   root.addChild(zoom);
   // a curve from the red planet up and over to the blue one
-  const P = [[250, 470], [430, 60], [900, -40], [1110, 105]];
+  const P = [[250, 470], [430 + OX, 60], [900 + 2 * OX, -40], [1110 + 2 * OX, 105]];
   const bez = (u, i) => (1 - u) ** 3 * P[0][i] + 3 * (1 - u) ** 2 * u * P[1][i] + 3 * (1 - u) * u * u * P[2][i] + u ** 3 * P[3][i];
   let t = 0, landed = false;
   const DUR = 4.2;
@@ -480,7 +480,7 @@ function TheEnd() {
     const s = new PIXI.Sprite(lt.texture);
     s.anchor.set(0.5, 0.5);
     root.addChild(s);
-    letters.push({ ch, s, w: lt.w - 6, h: lt.h - 6, x: 330 + slot * 122, y: -150 - i * 140, vx: 0, vy: 0, rot: (Math.random() - 0.5) * 0.6, vr: 0, i, landed: false });
+    letters.push({ ch, s, w: lt.w - 6, h: lt.h - 6, x: OX + 330 + slot * 122, y: -150 - i * 140, vx: 0, vy: 0, rot: (Math.random() - 0.5) * 0.6, vr: 0, i, landed: false });
   });
   const pig = new Pig(root, 270, GROUND_Y);
   pig.sprite.alpha = 0;

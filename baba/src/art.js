@@ -2,7 +2,12 @@
 // crayon style, so the whole game looks like one kid's drawing.
 import { rng, makeCanvas, toTexture, crayonFill, crayonLine, circlePts, drawGlyph, shade } from './crayon.js';
 
-export const W = 1280, H = 800;
+// The world is always 800 tall. Its width follows the screen's shape (1280 on a
+// Steam Deck, about 1422 on a 16:9 TV), so full screen has no bars at the sides.
+// OX is how far things drawn for the original 1280-wide screen shift to stay centred.
+export const H = 800;
+export const W = Math.round(H * Math.max(1.6, Math.min(2.1, (screen.width / screen.height) || 1.6)));
+export const OX = (W - 1280) / 2;
 
 const INK = '#2b2622';
 
@@ -59,14 +64,14 @@ export function marsSky() {
     const x = r() * W, y = r() * 360;
     crayonLine(ctx, [[x, y], [x + (r() - 0.5) * 4, y + 6 + r() * 8]], INK, 3, r, { passes: 1, amt: 1 });
   }
-  moon(ctx, 1040, 150, 95, r);
+  moon(ctx, W - 240, 150, 95, r);
   // the blue planet, far away, where the rocket is going
   planet(ctx, 190, 130, 46, '#4f8fe0', r, { spots: '#5fc56b' });
   // sun
-  crayonFill(ctx, circlePts(640, 110, 40, 40, 24), '#fde27a', r, { gap: 5, width: 5, outline: '#f2a33a' });
+  crayonFill(ctx, circlePts(W / 2, 110, 40, 40, 24), '#fde27a', r, { gap: 5, width: 5, outline: '#f2a33a' });
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2;
-    crayonLine(ctx, [[640 + Math.cos(a) * 52, 110 + Math.sin(a) * 52], [640 + Math.cos(a) * 72, 110 + Math.sin(a) * 72]], '#f2a33a', 4, r, { passes: 1 });
+    crayonLine(ctx, [[W / 2 + Math.cos(a) * 52, 110 + Math.sin(a) * 52], [W / 2 + Math.cos(a) * 72, 110 + Math.sin(a) * 72]], '#f2a33a', 4, r, { passes: 1 });
   }
   return toTexture(c);
 }
@@ -212,9 +217,9 @@ export function spaceSky() {
     if (r() < 0.3) star(ctx, x, y, 6 + r() * 6, r() < 0.5 ? '#fff3a8' : '#ffffff', r);
     else { ctx.fillStyle = '#fffbe0'; ctx.globalAlpha = 0.8; ctx.fillRect(x, y, 3, 3); ctx.globalAlpha = 1; }
   }
-  moon(ctx, 640, 120, 50, r);
+  moon(ctx, W / 2, 120, 50, r);
   planet(ctx, 120, 690, 240, '#d0553a', r, { spots: '#9b3b2a' });
-  planet(ctx, 1130, 300, 190, '#4f8fe0', r, { spots: '#5fc56b' });
+  planet(ctx, W - 150, 300, 190, '#4f8fe0', r, { spots: '#5fc56b' });
   return toTexture(c);
 }
 
@@ -222,14 +227,14 @@ export function blueSky() {
   const [c, ctx, r] = sky({ top: '#7fb2ee', bottom: '#cfe6fb', seed: 81 });
   // fluffy clouds
   for (let i = 0; i < 4; i++) {
-    const x = 150 + i * 320 + r() * 60, y = 110 + r() * 120;
+    const x = OX + 150 + i * 320 + r() * 60, y = 110 + r() * 120;
     for (let k = 0; k < 4; k++) {
       const s = 32 + r() * 24;
       crayonFill(ctx, circlePts(x + k * 38, y + (k % 2) * -14, s, s * 0.8, 18), '#ffffff', r, { gap: 5, width: 5, base: 0.95 });
     }
   }
   // the red planet, now far away
-  planet(ctx, 1110, 110, 40, '#d0553a', r, { spots: '#9b3b2a' });
+  planet(ctx, W - 170, 110, 40, '#d0553a', r, { spots: '#9b3b2a' });
   crayonFill(ctx, circlePts(180, 120, 46, 46, 24), '#fde27a', r, { gap: 5, width: 5, outline: '#f2a33a' });
   return toTexture(c);
 }

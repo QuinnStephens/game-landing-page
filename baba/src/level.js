@@ -1,4 +1,5 @@
-// The red planet level. Units are pixels; the screen is 1280 x 800.
+// The red planet level. Units are pixels; the screen is 800 tall and
+// 1280 or more wide (see W in art.js).
 // Solids are [x, y, w, h]; the player can stand on all of them and bonk
 // their heads underneath. Falling into a gap is an "ouch".
 
