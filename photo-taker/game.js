@@ -1,6 +1,6 @@
 // Photo Taker: walk around with a camera and take pictures. Don't wake the bears!
 // Plain canvas 2D, no libraries. All art is cut out of Violeta's drawings in assets/;
-// the clothes are placeholder drawings made in code (see ITEMS) until she draws them.
+// including the clothes in the shops (see ITEMS).
 (() => {
   'use strict';
 
@@ -231,142 +231,65 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Clothes. Placeholders drawn in code, each on its own little canvas, until
-  // Violeta draws the real ones. To swap one for a drawing later, put the PNG in
-  // assets/ and set `img: 'name'` on the item. It's stretched to the cw x ch box,
-  // so crop it to about that shape; ax, ay still decide where it sits.
-  // slot: where it goes on the kid. w: width compared to the kid's head.
-  // ax, ay: the point of the item that lines up with the kid's anchor.
+  // Clothes, cut out of Violeta's drawings of the shop racks (assets/clothes/).
+  // slot: 'top' (shirts, jackets, dresses), 'legs' (pants, skirts) or 'head'.
   const ITEMS = [
-    { id: 'crown', name: 'Crown', shop: 'fancy', slot: 'head', w: 0.85, cw: 200, ch: 140, ax: 100, ay: 128,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(18, 125); c.lineTo(18, 38); c.lineTo(60, 80); c.lineTo(100, 16); c.lineTo(140, 80); c.lineTo(182, 38); c.lineTo(182, 125); c.closePath(); }, '#ffd400', '#d99a00', 10);
-        ink(c, (c) => { c.beginPath(); c.arc(100, 98, 13, 0, 7); }, '#ff1a1a', '#111', 4);
-        ink(c, (c) => { c.beginPath(); c.arc(52, 104, 10, 0, 7); }, '#1d4cff', '#111', 4);
-        ink(c, (c) => { c.beginPath(); c.arc(148, 104, 10, 0, 7); }, '#00d000', '#111', 4);
-      } },
-    { id: 'tophat', name: 'Top Hat', shop: 'fancy', slot: 'head', w: 0.8, cw: 200, ch: 220, ax: 100, ay: 205,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.rect(48, 28, 104, 160); }, '#151515', '#000', 8);
-        ink(c, (c) => { c.beginPath(); c.rect(48, 148, 104, 26); }, '#ff1aa8', null);
-        ink(c, (c) => { c.beginPath(); c.ellipse(100, 196, 92, 16, 0, 0, 7); }, '#151515', '#000', 8);
-      } },
-    { id: 'fancyglasses', name: 'Star Glasses', shop: 'fancy', slot: 'face', w: 0.95, cw: 240, ch: 110, ax: 120, ay: 55,
-      draw(c) {
-        const star = (cx, cy) => (c) => {
-          c.beginPath();
-          for (let i = 0; i < 10; i++) { const r = i % 2 ? 22 : 48, a = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
-          c.closePath();
-        };
-        ink(c, star(62, 58), '#ff2bd6', '#111', 6);
-        ink(c, star(178, 58), '#ff2bd6', '#111', 6);
-        ink(c, (c) => { c.beginPath(); c.moveTo(104, 52); c.quadraticCurveTo(120, 40, 136, 52); }, null, '#111', 6);
-      } },
-    { id: 'bowtie', name: 'Bow Tie', shop: 'fancy', slot: 'neck', w: 0.6, cw: 180, ch: 100, ax: 90, ay: 50,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(90, 50); c.lineTo(12, 12); c.lineTo(12, 88); c.closePath(); c.moveTo(90, 50); c.lineTo(168, 12); c.lineTo(168, 88); c.closePath(); }, '#ff1a1a', '#111', 7);
-        ink(c, (c) => { c.beginPath(); c.arc(90, 50, 17, 0, 7); }, '#c40000', '#111', 6);
-      } },
-    { id: 'necklace', name: 'Pearls', shop: 'fancy', slot: 'neck', w: 0.7, cw: 200, ch: 140, ax: 100, ay: 14,
-      draw(c) {
-        for (let i = 0; i <= 12; i++) {
-          const a = Math.PI * (i / 12), x = 100 - Math.cos(a) * 82, y = 14 + Math.sin(a) * 90;
-          ink(c, (c) => { c.beginPath(); c.arc(x, y, 12, 0, 7); }, '#ffffff', '#888', 4);
-        }
-        ink(c, (c) => { c.beginPath(); c.moveTo(100, 104); c.lineTo(118, 122); c.lineTo(100, 138); c.lineTo(82, 122); c.closePath(); }, '#8a00ff', '#111', 4);
-      } },
-    { id: 'royalcape', name: 'Royal Cape', shop: 'fancy', slot: 'back', w: 1.45, cw: 220, ch: 250, ax: 110, ay: 14,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(62, 8); c.lineTo(158, 8); c.lineTo(214, 244); c.lineTo(6, 244); c.closePath(); }, '#8a00ff', '#3d0070', 8);
-        ink(c, (c) => { c.beginPath(); c.rect(50, 4, 120, 30); }, '#ffffff', '#111', 5);
-        c.fillStyle = '#111'; for (let x = 66; x < 165; x += 24) c.fillRect(x, 14, 7, 9);
-      } },
-    { id: 'wand', name: 'Magic Wand', shop: 'fancy', slot: 'hand', w: 0.55, cw: 120, ch: 210, ax: 60, ay: 196,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(60, 200); c.lineTo(60, 72); }, null, '#111', 10);
-        ink(c, (c) => {
-          c.beginPath();
-          for (let i = 0; i < 10; i++) { const r = i % 2 ? 18 : 44, a = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(60 + Math.cos(a) * r, 52 + Math.sin(a) * r); }
-          c.closePath();
-        }, '#ffd400', '#d99a00', 6);
-      } },
-    { id: 'cap', name: 'Cool Cap', shop: 'cool', slot: 'head', w: 1.0, cw: 230, ch: 130, ax: 100, ay: 116,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.ellipse(170, 110, 58, 14, 0, 0, 7); }, '#1d4cff', '#111', 6);
-        ink(c, (c) => { c.beginPath(); c.arc(100, 116, 84, Math.PI, 0); c.closePath(); }, '#1d4cff', '#111', 7);
-        ink(c, (c) => { c.beginPath(); c.arc(100, 32, 10, 0, 7); }, '#ff1a1a', null);
-      } },
-    { id: 'headphones', name: 'Headphones', shop: 'cool', slot: 'ears', w: 1.18, cw: 240, ch: 200, ax: 120, ay: 130,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.arc(120, 132, 98, Math.PI * 1.02, Math.PI * 1.98); }, null, '#111', 15);
-        ink(c, (c) => { roundRect(c, 4, 96, 40, 74, 14); }, '#00d000', '#111', 6);
-        ink(c, (c) => { roundRect(c, 196, 96, 40, 74, 14); }, '#00d000', '#111', 6);
-      } },
-    { id: 'sunglasses', name: 'Sunglasses', shop: 'cool', slot: 'face', w: 0.85, cw: 220, ch: 80, ax: 110, ay: 38,
-      draw(c) {
-        ink(c, (c) => { roundRect(c, 12, 14, 86, 52, 16); }, '#111', '#000', 6);
-        ink(c, (c) => { roundRect(c, 122, 14, 86, 52, 16); }, '#111', '#000', 6);
-        ink(c, (c) => { c.beginPath(); c.moveTo(96, 30); c.lineTo(124, 30); }, null, '#000', 7);
-        c.fillStyle = 'rgba(255,255,255,.7)'; c.fillRect(28, 24, 18, 8); c.fillRect(138, 24, 18, 8);
-      } },
-    { id: 'scarf', name: 'Stripy Scarf', shop: 'cool', slot: 'neck', w: 0.85, cw: 200, ch: 170, ax: 100, ay: 32,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(118, 40); c.lineTo(160, 46); c.lineTo(150, 160); c.lineTo(116, 156); c.closePath(); }, '#00d000', '#111', 6);
-        ink(c, (c) => { roundRect(c, 10, 12, 180, 44, 20); }, '#00d000', '#111', 6);
-        c.strokeStyle = '#ffd400'; c.lineWidth = 9; c.lineCap = 'round';
-        for (const x of [45, 85, 125, 165]) { c.beginPath(); c.moveTo(x, 18); c.lineTo(x - 10, 50); c.stroke(); }
-        for (const y of [80, 120]) { c.beginPath(); c.moveTo(122, y); c.lineTo(152, y + 4); c.stroke(); }
-      } },
-    { id: 'supercape', name: 'Super Cape', shop: 'cool', slot: 'back', w: 1.4, cw: 220, ch: 250, ax: 110, ay: 14,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(70, 8); c.lineTo(150, 8); c.quadraticCurveTo(200, 120, 214, 244); c.lineTo(110, 226); c.lineTo(6, 244); c.quadraticCurveTo(20, 120, 70, 8); c.closePath(); }, '#ff1a1a', '#8a0000', 8);
-        ink(c, (c) => {
-          c.beginPath();
-          for (let i = 0; i < 10; i++) { const r = i % 2 ? 16 : 36, a = -Math.PI / 2 + i * Math.PI / 5; c.lineTo(110 + Math.cos(a) * r, 120 + Math.sin(a) * r); }
-          c.closePath();
-        }, '#ffd400', '#111', 5);
-      } },
-    { id: 'balloon', name: 'Balloon', shop: 'cool', slot: 'hand', w: 0.8, cw: 130, ch: 320, ax: 65, ay: 312,
-      draw(c) {
-        ink(c, (c) => { c.beginPath(); c.moveTo(65, 316); c.bezierCurveTo(40, 250, 90, 200, 65, 132); }, null, '#111', 4);
-        ink(c, (c) => { c.beginPath(); c.ellipse(65, 70, 54, 64, 0, 0, 7); }, '#ff2bd6', '#111', 6);
-        c.fillStyle = 'rgba(255,255,255,.7)'; c.beginPath(); c.ellipse(45, 45, 10, 18, -0.4, 0, 7); c.fill();
-      } },
+    { id: 'fancy-purple', name: 'Purple Dress', shop: 'fancy', slot: 'top' },
+    { id: 'fancy-red', name: 'Red Top', shop: 'fancy', slot: 'top' },
+    { id: 'fancy-heart', name: 'Heart Dress', shop: 'fancy', slot: 'top' },
+    { id: 'fancy-black', name: 'Black Jacket', shop: 'fancy', slot: 'top' },
+    { id: 'fancy-green', name: 'Green Dress', shop: 'fancy', slot: 'top' },
+    { id: 'fancy-yellow', name: 'Yellow Pants', shop: 'fancy', slot: 'legs' },
+    { id: 'fancy-pink', name: 'Pink Skirt', shop: 'fancy', slot: 'legs' },
+    { id: 'fancy-cyan', name: 'Blue Skirt', shop: 'fancy', slot: 'legs' },
+    { id: 'cool-hero', name: 'Hero Shirt', shop: 'cool', slot: 'top' },
+    { id: 'cool-jacket', name: 'Black Shirt', shop: 'cool', slot: 'top' },
+    { id: 'cool-black', name: 'Black Pants', shop: 'cool', slot: 'legs' },
+    { id: 'cool-red', name: 'Red Pants', shop: 'cool', slot: 'legs' },
+    { id: 'cool-redpants', name: 'Skinny Red Pants', shop: 'cool', slot: 'legs' },
+    { id: 'cool-blue', name: 'Blue Pants', shop: 'cool', slot: 'legs' },
+    { id: 'cool-swirl', name: 'Swirly Hat', shop: 'cool', slot: 'head' },
   ];
   const ITEM = Object.fromEntries(ITEMS.map((it) => [it.id, it]));
-  const SLOT_NAME = { head: 'hat', ears: 'ears', face: 'glasses', neck: 'neck', back: 'cape', hand: 'hand' };
-  for (const it of ITEMS) {
-    const c = document.createElement('canvas'); c.width = it.cw; c.height = it.ch;
-    it.draw(c.getContext('2d'));
-    it.canvas = c;
-    if (it.img) loadImage(`assets/${it.img}.png`).then((i) => { if (i) it.canvas = i; });
+  for (const it of ITEMS) loadImage(`assets/clothes/${it.id}.png`).then((i) => { it.img = i; });
+  const RACKS = {};
+  for (const r of ['fancy', 'cool']) loadImage(`assets/clothes/rack-${r}.png`).then((i) => { RACKS[r] = i; });
+  // Older saves had placeholder clothes; forget any that no longer exist.
+  save.owned = save.owned.filter((id) => ITEM[id]);
+  for (const kid of ['boy', 'girl']) {
+    const wear = save.wear[kid];
+    for (const slot in wear) if (!ITEM[wear[slot]] || ITEM[wear[slot]].slot !== slot) delete wear[slot];
   }
 
   // Where things go on each kid, as fractions of the drawing's width and height.
-  // headW is the head's width compared to the whole drawing.
+  // top: [center x, top y, width] of the shirt area. legs: [center x, top y, height]
+  // from the hips to the feet. head: [center x, top of head, width]. hand: camera.
   const KIDS = {
-    boy: { label: 'Boy', h: 200, pet: 'dog', petLabel: 'Dog', petH: 95, headW: 0.62,
-      head: [0.47, 0.07], ears: [0.47, 0.2], face: [0.53, 0.22], neck: [0.45, 0.43], back: [0.45, 0.41], hand: [0.96, 0.67] },
-    girl: { label: 'Girl', h: 225, pet: 'rabbit', petLabel: 'Rabbit', petH: 115, headW: 0.62,
-      head: [0.5, 0.16], ears: [0.5, 0.29], face: [0.5, 0.25], neck: [0.5, 0.47], back: [0.5, 0.45], hand: [0.97, 0.6] },
+    boy: { label: 'Boy', h: 200, pet: 'dog', petLabel: 'Dog', petH: 95,
+      top: [0.46, 0.38, 0.62], legs: [0.45, 0.62, 0.36], head: [0.47, 0.09, 0.6], hand: [0.96, 0.67] },
+    girl: { label: 'Girl', h: 225, pet: 'rabbit', petLabel: 'Rabbit', petH: 115,
+      top: [0.47, 0.44, 0.6], legs: [0.47, 0.7, 0.27], head: [0.5, 0.17, 0.6], hand: [0.97, 0.6] },
   };
-  const FRONT_SLOTS = ['neck', 'face', 'head', 'ears', 'hand'];
+  const SLOTS = ['legs', 'top', 'head'];
 
   // Draws a kid with their feet at (0, 0) of the current transform, facing right.
   function drawKidAt(c, kid, h, wear, opts = {}) {
     const img = IMG[kid]; if (!img) return;
-    const K = KIDS[kid], w = h * img.width / img.height, headPx = K.headW * w;
+    const K = KIDS[kid], w = h * img.width / img.height;
     const at = (slot) => [-w / 2 + K[slot][0] * w, -h + K[slot][1] * h];
-    const put = (id, slot) => {
-      const it = ITEM[id]; if (!it) return;
-      const s = it.w * headPx / it.cw, [x, y] = at(slot);
-      c.drawImage(it.canvas, x - it.ax * s, y - it.ay * s, it.cw * s, it.ch * s);
+    const put = (id) => {
+      const it = ITEM[id]; if (!it || !it.img) return;
+      const size = K[it.slot][2], [x, y] = at(it.slot);
+      const iw = it.img.width, ih = it.img.height;
+      let dw, dh;
+      if (it.slot === 'legs') { dh = size * h; dw = Math.min(dh * iw / ih, w * 0.75); dh = dw * ih / iw; }
+      else { dw = size * w; dh = dw * ih / iw; }
+      c.drawImage(it.img, x - dw / 2, it.slot === 'head' ? y - dh * 0.75 : y, dw, dh);
     };
     const worn = { ...wear };
     if (opts.tryOn) worn[ITEM[opts.tryOn].slot] = opts.tryOn;
-    if (worn.back) put(worn.back, 'back');
     c.drawImage(img, -w / 2, -h, w, h);
-    for (const slot of FRONT_SLOTS) if (worn[slot]) put(worn[slot], slot);
+    for (const slot of SLOTS) if (worn[slot]) put(worn[slot]);
     if (opts.camera) {
       const [x, y] = at('hand');
       c.save(); c.translate(x + 6, y - 4); c.rotate(-0.05);
@@ -1157,6 +1080,12 @@
     const r = rng(s.id.length * 99);
     for (let i = 0; i < 26; i++) { c.beginPath(); const x = r() * W; c.moveTo(x, 0); c.lineTo(x + (r() - 0.5) * 200, H); c.stroke(); }
     c.restore();
+    // Her drawing of the shop's racks, faded behind the clothes
+    const rack = RACKS[s.id];
+    if (rack) {
+      const rw = W * 0.62, rh = rw * rack.height / rack.width;
+      c.save(); c.globalAlpha = 0.22; c.drawImage(rack, W - rw - 10, 150, rw, rh); c.restore();
+    }
     const shopImg = IMG[s.id === 'fancy' ? 'fancy-shop' : s.id === 'cool' ? 'cool-shop' : null];
     if (shopImg) { const h = 150, w = h * shopImg.width / shopImg.height; c.drawImage(shopImg, 30, 18, w, h); }
     c.save(); c.fillStyle = s.ink; c.font = font(52); c.textBaseline = 'middle';
@@ -1188,8 +1117,10 @@
       c.save();
       c.fillStyle = '#fff'; c.strokeStyle = '#111'; c.lineWidth = 4;
       roundRect(c, x, y, cw, ch, 18); c.fill(); c.stroke();
-      const s2 = Math.min((cw - 40) / item.cw, (ch - 60) / item.ch);
-      c.drawImage(item.canvas, x + cw / 2 - item.cw * s2 / 2, y + 12 + (ch - 60 - item.ch * s2) / 2, item.cw * s2, item.ch * s2);
+      if (item.img) {
+        const iw = item.img.width, ih = item.img.height, s2 = Math.min((cw - 40) / iw, (ch - 64) / ih);
+        c.drawImage(item.img, x + cw / 2 - iw * s2 / 2, y + 12 + (ch - 64 - ih * s2) / 2, iw * s2, ih * s2);
+      }
       c.fillStyle = '#111'; c.font = font(20); c.textAlign = 'center';
       c.fillText(item.name, x + cw / 2, y + ch - 30);
       c.font = font(16); c.fillStyle = worn ? '#00a000' : owned ? '#777' : s.ink;

@@ -4,7 +4,7 @@ Pick a boy (with his brown dog) or a girl (with her pink rabbit) and walk around
 
 - **Sleeping bears** wake up if you take their picture, and chase you. You can't jump, but you can outrun them: hold run and the bear gets tired, stops to huff and puff, then goes back to sleep. If it catches you, you fall over and it walks home.
 - **Mom and Dad** stand near the start. Walk up to them to talk.
-- **The Fancy Shop and the Cool Shop** give away clothes for free: hats, glasses, capes, a balloon and more. Pick one to put it on, and see it on your kid in the game. "My clothes" in the menu lets you change outfits any time.
+- **The Fancy Shop and the Cool Shop** give away the clothes she drew for free: dresses, shirts, pants, skirts and a hat. Pick one to put it on, and see it on your kid in the game. "My clothes" in the menu lets you change outfits any time.
 - Photos, clothes and the Photo Book are saved in the browser.
 
 Plain JavaScript drawing on a `<canvas>`, no libraries. Everything is in `game.js`.
@@ -30,7 +30,7 @@ Hold Select + Start to go back to the launcher.
 
 All the art is cut out of Violeta's drawings: the title screen, the kids and pets, Mom and Dad, the bear, the two shops, Cool World, the bear sign, trees, flowers, the sun, clouds and the ground. The sleeping and tired bear faces are drawn in code over a copy of the bear with its face painted out.
 
-The clothes are placeholders drawn in code (`ITEMS` in `game.js`) until she draws them. Each item says which spot it goes on (`head`, `ears`, `face`, `neck`, `back`, `hand`) and how big it is next to the kid's head, and `KIDS` says where those spots are on each kid's drawing.
+The clothes in the shops come from her drawings of the clothes racks (purple racks for the Fancy Shop, black for the Cool Shop), cut out one piece at a time into `assets/clothes/`. The racks themselves show faded behind the clothes inside each shop. `ITEMS` in `game.js` names each piece and says where it goes: `top` (shirts, jackets, dresses), `legs` (pants, skirts) or `head`. `KIDS` says where those spots are on each kid's drawing.
 
 ## Run locally
 
