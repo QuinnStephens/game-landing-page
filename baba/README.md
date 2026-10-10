@@ -16,7 +16,8 @@ browsers block modules on `file://`, so serve it, e.g. `npx http-server .`
 | Move | Left stick / D-pad | Arrows or A / D |
 | Jump (hold for higher) | A or B | Space, Up, W or Z |
 | Run | X, Y or right trigger | Shift or X |
-| Full screen | Start | F (or the corner button) |
+| Start | A or Start | Enter or Space |
+| Full screen | | F |
 | Back to title | Select | R |
 
 ## Files

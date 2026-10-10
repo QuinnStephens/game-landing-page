@@ -1,6 +1,6 @@
 // Keyboard + Gamepad API, merged into one simple state each frame.
 // Steam Deck / Xbox layout: A or B jump, X / Y / right trigger run,
-// Start toggles fullscreen, Select (View) restarts.
+// A or Start confirms, Select (View) restarts. F toggles fullscreen, like the other games.
 
 const keys = new Set();
 const pressedKeys = new Set();
@@ -11,7 +11,7 @@ const KEYMAP = {
   down: ['ArrowDown', 'KeyS'],
   jump: ['Space', 'ArrowUp', 'KeyW', 'KeyZ', 'KeyK'],
   run: ['ShiftLeft', 'ShiftRight', 'KeyX', 'KeyJ'],
-  start: ['KeyF'],
+  fullscreen: ['KeyF'],
   back: ['KeyR'],
   confirm: ['Enter', 'Space', 'KeyZ'],
 };
@@ -28,14 +28,14 @@ const prevPad = {};
 
 export const input = {
   left: false, right: false, down: false, jump: false, run: false,
-  jumpPressed: false, startPressed: false, backPressed: false, confirmPressed: false,
+  jumpPressed: false, fullscreenPressed: false, backPressed: false, confirmPressed: false,
   usingPad: false,
 
   poll() {
     const k = (name) => KEYMAP[name].some((c) => keys.has(c));
     const kp = (name) => KEYMAP[name].some((c) => pressedKeys.has(c));
     let left = k('left'), right = k('right'), down = k('down'), jump = k('jump'), run = k('run');
-    let jumpPressed = kp('jump'), startPressed = kp('start'), backPressed = kp('back'), confirmPressed = kp('confirm');
+    let jumpPressed = kp('jump'), fullscreenPressed = kp('fullscreen'), backPressed = kp('back'), confirmPressed = kp('confirm');
     if (pressedKeys.size) this.usingPad = false;
     pressedKeys.clear();
 
@@ -57,13 +57,12 @@ export const input = {
       jump ||= now[0] || now[1];
       run ||= now[2] || now[3] || now[7];
       jumpPressed ||= edge(0) || edge(1);
-      confirmPressed ||= edge(0) || edge(1);
-      startPressed ||= edge(9);
+      confirmPressed ||= edge(0) || edge(1) || edge(9);
       backPressed ||= edge(8);
       if (Object.values(now).some(Boolean) || padLeft || padRight) this.usingPad = true;
       prevPad[pad.index] = now;
     }
 
-    Object.assign(this, { left, right, down, jump, run, jumpPressed, startPressed, backPressed, confirmPressed });
+    Object.assign(this, { left, right, down, jump, run, jumpPressed, fullscreenPressed, backPressed, confirmPressed });
   },
 };

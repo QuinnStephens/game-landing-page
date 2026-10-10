@@ -22,7 +22,6 @@ document.addEventListener('fullscreenchange', fit);
 fit();
 
 // ---------- fullscreen ----------
-const fsButton = document.getElementById('fs');
 function toggleFullscreen() {
   unlockAudio();
   try {
@@ -30,8 +29,6 @@ function toggleFullscreen() {
     else document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
   } catch (e) { /* not allowed right now */ }
 }
-fsButton.addEventListener('click', (e) => { toggleFullscreen(); fsButton.blur(); e.preventDefault(); });
-document.addEventListener('fullscreenchange', () => fsButton.classList.toggle('on', !!document.fullscreenElement));
 
 // ---------- textures ----------
 const loading = document.getElementById('loading');
@@ -240,10 +237,7 @@ function Title() {
   enemy.position.set(990, GROUND_Y + 4);
   const press = word('PRESS A TO START', 40, '#2b2622', { seed: 3 });
   press.position.set(W / 2, 520);
-  const fs = word('START BUTTON = FULL SCREEN', 22, '#2b2622', { seed: 4 });
-  fs.position.set(W / 2, 760);
-  fs.alpha = 0.7;
-  root.addChild(title1, title2, pig, enemy, press, fs);
+  root.addChild(title1, title2, pig, enemy, press);
   let t = 0;
   return {
     root,
@@ -596,7 +590,7 @@ setScene(Title());
 app.ticker.add((ticker) => {
   const dt = Math.min(ticker.deltaMS / 1000, 1 / 30);
   input.poll();
-  if (input.startPressed) toggleFullscreen();
+  if (input.fullscreenPressed) toggleFullscreen();
   if (input.backPressed) goto(Title);
   // small physics steps keep fast falls from tunnelling through floors
   const steps = dt > 1 / 90 ? 2 : 1;
