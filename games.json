@@ -12,6 +12,12 @@
     "image": "images/valley-alpha.png"
   },
   {
+    "title": "Photo Taker",
+    "tagline": "Take a picture of everything. Except the sleeping bear.",
+    "url": "/photo-taker/",
+    "image": "images/photo-taker.png"
+  },
+  {
     "title": "Baba Boo Bee Ba",
     "tagline": "Get to the blue planet.",
     "url": "/baba/",

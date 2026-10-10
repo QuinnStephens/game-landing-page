@@ -8,6 +8,7 @@ One Cloudflare Pages site for all the games. The root `index.html` is the launch
 | Baba Boo Bee Ba | `baba/` |
 | In My Mom's Tummy | `in-my-moms-tummy/` |
 | Jojo Finds Momo | `jojo-finds-momo/` |
+| Photo Taker | `photo-taker/` |
 
 Everything is static with no build step (Cloudflare Pages: no build command, output directory `/`). To try it locally, serve the repo root, e.g. `python3 -m http.server`, and open http://localhost:8000.
 
