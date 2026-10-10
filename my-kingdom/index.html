@@ -37,6 +37,9 @@
         const CEILING_Y = -720;
         const GROUND_Y = 560;
         const BEAR_START_X = 400;
+        // The level the bear is in right now. Survival's level is far off to the right of this one, in the same physics world
+        const EXPLORE_LEVEL = { left: LEVEL_LEFT, right: LEVEL_RIGHT, ceiling: CEILING_Y, ground: GROUND_Y, startX: BEAR_START_X };
+        let level = EXPLORE_LEVEL;
 
         const MAX_VELOCITY_X = 10;
         const MAX_RISE_SPEED = 18;
@@ -609,6 +612,7 @@
         }
 
         function spawnRandomObject() {
+            if (game.mode === 'survival') return;
             const x = Math.min(Math.max(car.base.position.x - 200 + Math.random() * 400, LEVEL_LEFT + 60), LEVEL_RIGHT - 60);
             const y = Math.max(camera.y + 60, CEILING_Y + 60);
             const letter = alphabet[currentLetterIndex];
@@ -684,7 +688,7 @@
 
         function spawnCar() {
             if (car) Composite.remove(engine.world, car.composite);
-            car = createBearCar(BEAR_START_X, GROUND_Y - 31);
+            car = createBearCar(level.startX, level.ground - 31);
             Composite.add(engine.world, car.composite);
             resolveBearOverlap();
         }
@@ -696,19 +700,25 @@
             });
         }
 
-        function moveCar(xDirection, yDirection) {
-            let forceX = 0, forceY = 0
-            if (xDirection === "left") { forceX = -1; }
-            if (xDirection === "right") { forceX = 1; }
-            if (xDirection === "up") { forceY = -1; }
-            if (xDirection === "down") { forceY = 0; }
-
+        // Both wheels drive (like a motor), so the car rolls along instead of popping a wheelie and flipping over.
+        // A small push on the body too, so it can still steer in the air
+        const WHEEL_SPIN = MAX_VELOCITY_X / 30;
+        function moveCar(xDirection) {
+            const direction = xDirection === "left" ? -1 : xDirection === "right" ? 1 : 0;
+            if (!direction) return;
+            car.wheels.forEach(wheel => {
+                Body.setAngularVelocity(wheel, wheel.angularVelocity + (direction * WHEEL_SPIN - wheel.angularVelocity) * 0.2);
+            });
             if (Math.abs(car.chassis.velocity.x) < MAX_VELOCITY_X) {
-                Body.applyForce(car.chassis, car.chassis.position, { x: forceX * 0.01, y: forceY * 0.2 })
+                Body.applyForce(car.chassis, car.chassis.position, { x: direction * 0.004, y: 0 });
             }
         }
 
         function jump() {
+            if (game.mode === 'survival') {
+                survivalJump();
+                return;
+            }
             // One jump per physics step, so mashing the button can't pile up a huge launch
             if (car.chassis.force.y < 0) return;
             Body.applyForce(car.chassis, car.chassis.position, { x: 0, y: -0.2 })
@@ -716,16 +726,21 @@
 
         // Keeps the bear inside the fence: no rocketing up by mashing jump, and a rescue if it ever slips out
         function limitCar() {
+            // Leaning further than this, the car gently tips itself back upright
+            const tilt = car.chassis.angle;
+            if (Math.abs(tilt) > 0.3) {
+                Body.setAngularVelocity(car.chassis, car.chassis.angularVelocity * 0.9 - Math.sign(tilt) * 0.004);
+            }
             car.bodies.forEach(body => {
                 if (body.velocity.y < -MAX_RISE_SPEED) {
                     Body.setVelocity(body, { x: body.velocity.x, y: -MAX_RISE_SPEED });
                 }
             });
             const p = car.base.position;
-            if (p.x < LEVEL_LEFT || p.x > LEVEL_RIGHT || p.y < CEILING_Y || p.y > GROUND_Y) {
-                const x = Math.min(Math.max(p.x, LEVEL_LEFT + 120), LEVEL_RIGHT - 120);
+            if (p.x < level.left || p.x > level.right || p.y < level.ceiling || p.y > level.ground) {
+                const x = Math.min(Math.max(p.x, level.left + 120), level.right - 120);
                 Composite.remove(engine.world, car.composite);
-                car = createBearCar(x, GROUND_Y - 31);
+                car = createBearCar(x, level.ground - 31);
                 Composite.add(engine.world, car.composite);
                 resolveBearOverlap();
             }
@@ -739,7 +754,7 @@
         function carInsideLevel() {
             const b = car.chassis.bounds;
             const wheelBottom = Math.max(...car.wheels.map(w => w.bounds.max.y));
-            return b.min.x >= LEVEL_LEFT && b.max.x <= LEVEL_RIGHT && b.min.y >= CEILING_Y && wheelBottom <= GROUND_Y + 1;
+            return b.min.x >= level.left && b.max.x <= level.right && b.min.y >= level.ceiling && wheelBottom <= level.ground + 1;
         }
 
         // If a block ends up on top of the bear, slide the bear to the nearest free spot (trying up first)
@@ -784,9 +799,9 @@
                 tx = car.base.position.x - viewW / 2;
                 ty = car.base.position.y - VIEW_HEIGHT * 0.6;
             }
-            const minX = LEVEL_LEFT - 60, maxX = LEVEL_RIGHT + 60 - viewW;
-            tx = maxX < minX ? (LEVEL_LEFT + LEVEL_RIGHT - viewW) / 2 : Math.min(Math.max(tx, minX), maxX);
-            ty = Math.min(Math.max(ty, CEILING_Y - 60 - topRoom), GROUND_Y + 100 + bottomRoom - VIEW_HEIGHT);
+            const minX = level.left - 60, maxX = level.right + 60 - viewW;
+            tx = maxX < minX ? (level.left + level.right - viewW) / 2 : Math.min(Math.max(tx, minX), maxX);
+            ty = Math.min(Math.max(ty, level.ceiling - 60 - topRoom), level.ground + 100 + bottomRoom - VIEW_HEIGHT);
             const ease = snap ? 1 : 0.15;
             camera.x += (tx - camera.x) * ease;
             camera.y += (ty - camera.y) * ease;
@@ -857,7 +872,7 @@
         }
 
         function setEditMode(on) {
-            if (editor.active === on) return;
+            if (editor.active === on || (on && game.mode === 'survival')) return;
             if (!on && editor.held) dropHeld();
             editor.active = on;
             input = { xDirection: null, yDirection: null };
@@ -1143,7 +1158,7 @@
             const { width, height } = app.screen;
             const gap = 10;
             let x = 0;
-            buttonBar.children.forEach(button => {
+            buttonBar.children.filter(button => button.visible).forEach(button => {
                 button.position.set(x, 0);
                 x += button.width + gap;
             });
@@ -1180,14 +1195,360 @@
                     bg.roundRect(0, 0, SLOT, SLOT, 8).fill(selected ? 0xffe45c : 0x2c3e66);
                     bg.roundRect(3, 3, SLOT - 6, SLOT - 6, 6).fill(selected ? 0xfff6c4 : 0x3d5288);
                 });
+            } else if (game.mode === 'survival') {
+                hintText.text = 'Squish the blue blobs with your car and get to the star!';
             } else {
                 hintText.text = 'Press Y (controller) or E (keyboard) for Build Mode';
             }
         }
 
+        // ---------- Survival (a hand-drawn platformer level) ----------
+
+        // The blue blobs and the platforms were cut from the survival drawing by tools/cut_survival_art.py.
+        // layout.json has each piece's size and, for platforms, the outline of the solid part (in sprite pixels)
+        const SURVIVAL_LAYOUT = await (await fetch('public/img/survival/layout.json')).json();
+        const survivalTextures = {};
+        await Promise.all(Object.keys(SURVIVAL_LAYOUT).map(async name => {
+            survivalTextures[name] = await PIXI.Assets.load(`public/img/survival/${name}.png`);
+        }));
+
+        const SURVIVAL_LEVEL = { left: 4000, right: 13800, ceiling: GROUND_Y - 1500, ground: GROUND_Y, startX: 4300 };
+        const JUMP_SPEED = 16;
+        const STOMP_BOUNCE = 11;
+        const ENEMY_HEIGHT = 110;
+
+        // x is the middle (from the left fence), top is how high the top is off the ground, w and h are the solid part's size.
+        // Pieces that sit on the ground are a bit taller than their top, so they sink into it
+        const SURVIVAL_PLATFORMS = [
+            { art: 'platform-box', x: 1500, top: 170, w: 280, h: 190 },
+            { art: 'platform-bar', x: 1980, top: 440, w: 420, h: 90 },
+            { art: 'platform-box', x: 2500, top: 200, w: 300, h: 220 },
+            { art: 'platform-hill', x: 3700, top: 230, w: 1000, h: 250 },
+            { art: 'platform-box', x: 4500, top: 160, w: 260, h: 180 },
+            { art: 'platform-box', x: 4850, top: 330, w: 260, h: 350 },
+            { art: 'platform-bar', x: 5350, top: 560, w: 400, h: 90 },
+            { art: 'platform-bar', x: 5950, top: 760, w: 400, h: 90 },
+            { art: 'platform-bar', x: 6550, top: 520, w: 380, h: 90 },
+            { art: 'platform-hill', x: 7600, top: 200, w: 900, h: 220 },
+            { art: 'platform-bar', x: 8350, top: 450, w: 380, h: 90 },
+            { art: 'platform-box', x: 8900, top: 220, w: 300, h: 240 },
+        ];
+        // Blobs patrol back and forth across their platform, or between from and to on the ground
+        const SURVIVAL_ENEMIES = [
+            { art: 'enemy-1', from: 700, to: 1250 },
+            { art: 'enemy-2', on: 1 },
+            { art: 'enemy-3', from: 2850, to: 3150 },
+            { art: 'enemy-1', on: 3 },
+            { art: 'enemy-2', on: 6 },
+            { art: 'enemy-3', on: 7 },
+            { art: 'enemy-1', on: 8 },
+            { art: 'enemy-2', from: 6250, to: 7050 },
+            { art: 'enemy-3', on: 9 },
+            { art: 'enemy-1', on: 10 },
+            { art: 'enemy-2', from: 9050, to: 9300 },
+        ];
+        const GOAL_X = 9500;
+
+        const survivalLayer = new PIXI.Container();
+        const survivalPlatformLayer = new PIXI.Container();
+        const enemyLayer = new PIXI.Container();
+        const goalSprite = new PIXI.Container();
+        const sparkleLayer = new PIXI.Container();
+        pixiParent.addChildAt(survivalLayer, pixiParent.getChildIndex(backgroundLayer) + 1);
+        pixiParent.addChildAt(sparkleLayer, pixiParent.getChildIndex(carLayer) + 1);
+        survivalLayer.visible = sparkleLayer.visible = false;
+
+        // The same random numbers every time, so the scribbles don't change between visits
+        function seededRandom(seed) {
+            return () => {
+                seed = (seed * 1664525 + 1013904223) % 4294967296;
+                return seed / 4294967296;
+            };
+        }
+
+        // Purple marker scribbles like the drawing's background, lavender ground, and scribbled walls
+        function drawSurvivalBackground() {
+            const { left, right, ceiling, ground } = SURVIVAL_LEVEL;
+            const random = seededRandom(7);
+            const x0 = left - 900, x1 = right + 900, y0 = ceiling - 500, y1 = ground + 500;
+            const bg = new PIXI.Graphics();
+            bg.rect(x0, y0, x1 - x0, y1 - y0).fill(0x7000f0);
+            const purples = [0x6400e8, 0x7a10f2, 0x8420f0, 0x5c00dc, 0x8a2cf5];
+            for (let i = 0; i < 900; i++) {
+                const x = x0 + random() * (x1 - x0), y = y0 + random() * (y1 - y0);
+                const length = 120 + random() * 380, angle = -1.1 - random() * 0.5;
+                bg.moveTo(x, y).quadraticCurveTo(x + Math.cos(angle) * length * 0.5 + 30, y + Math.sin(angle) * length * 0.5,
+                    x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+                bg.stroke({ width: 14 + random() * 22, color: purples[i % purples.length], alpha: 0.55, cap: 'round' });
+            }
+            // Lavender ground, scribbled sideways like the bottom of the drawing
+            bg.rect(x0, ground, x1 - x0, 500).fill(0x8f4dff);
+            for (let i = 0; i < 260; i++) {
+                const x = x0 + random() * (x1 - x0), y = ground + 20 + random() * 300;
+                const length = 200 + random() * 500;
+                bg.moveTo(x, y).quadraticCurveTo(x + length / 2, y - 14 + random() * 28, x + length, y + random() * 20 - 10);
+                bg.stroke({ width: 16 + random() * 16, color: random() < 0.5 ? 0xa673ff : 0x7d3bf2, alpha: 0.8, cap: 'round' });
+            }
+            const edge = new PIXI.Graphics();
+            edge.moveTo(x0, ground + 4);
+            for (let x = x0; x <= x1; x += 60) edge.lineTo(x, ground + 4 + Math.sin(x * 0.013) * 4);
+            edge.stroke({ width: 10, color: 0x0a0014, cap: 'round' });
+            // Thick scribbled columns for the walls, and a darker band for the ceiling
+            for (const wallX of [left - 120, right]) {
+                for (let i = 0; i < 26; i++) {
+                    const x = wallX + random() * 120;
+                    bg.moveTo(x, y0).lineTo(x + random() * 40 - 20, ground);
+                    bg.stroke({ width: 18 + random() * 14, color: random() < 0.5 ? 0xa673ff : 0x9a5cff, alpha: 0.9, cap: 'round' });
+                }
+            }
+            for (let i = 0; i < 160; i++) {
+                const x = x0 + random() * (x1 - x0), y = ceiling - 40 - random() * 400;
+                bg.moveTo(x, y).lineTo(x + 300 + random() * 300, y + random() * 30 - 15);
+                bg.stroke({ width: 24, color: 0x5200c0, alpha: 0.85, cap: 'round' });
+            }
+            survivalLayer.addChild(bg, edge);
+        }
+
+        // Physics for the survival level: its own ground, walls and ceiling, plus the platforms
+        const survivalGround = Bodies.rectangle((SURVIVAL_LEVEL.left + SURVIVAL_LEVEL.right) / 2, GROUND_Y + 200, SURVIVAL_LEVEL.right - SURVIVAL_LEVEL.left + 800, 400, { isStatic: true, friction: 0.5, label: 'ground' });
+        const survivalHeight = GROUND_Y - SURVIVAL_LEVEL.ceiling;
+        const survivalBounds = [
+            survivalGround,
+            Bodies.rectangle(SURVIVAL_LEVEL.left - 100, SURVIVAL_LEVEL.ceiling + survivalHeight / 2, 200, survivalHeight + 800, { isStatic: true, label: 'wall' }),
+            Bodies.rectangle(SURVIVAL_LEVEL.right + 100, SURVIVAL_LEVEL.ceiling + survivalHeight / 2, 200, survivalHeight + 800, { isStatic: true, label: 'wall' }),
+            Bodies.rectangle((SURVIVAL_LEVEL.left + SURVIVAL_LEVEL.right) / 2, SURVIVAL_LEVEL.ceiling - 200, SURVIVAL_LEVEL.right - SURVIVAL_LEVEL.left + 800, 400, { isStatic: true, label: 'ceiling' }),
+        ];
+
+        // Each platform's drawing is stretched so its solid outline is w x h, with its top `top` above the ground
+        const survivalPlatforms = SURVIVAL_PLATFORMS.map(def => {
+            const info = SURVIVAL_LAYOUT[def.art];
+            const xs = info.hull.map(p => p[0]), ys = info.hull.map(p => p[1]);
+            const hullLeft = Math.min(...xs), hullTop = Math.min(...ys);
+            const sx = def.w / (Math.max(...xs) - hullLeft), sy = def.h / (Math.max(...ys) - hullTop);
+            const left = SURVIVAL_LEVEL.left + def.x - def.w / 2, top = GROUND_Y - def.top;
+            const vertices = info.hull.map(([x, y]) => ({ x: left + (x - hullLeft) * sx, y: top + (y - hullTop) * sy }));
+            const centre = Vertices.centre(vertices);
+            const body = Bodies.fromVertices(centre.x, centre.y, [vertices], { isStatic: true, friction: 0.6, label: 'platform' });
+            const sprite = new PIXI.Sprite(survivalTextures[def.art]);
+            sprite.scale.set(sx, sy);
+            sprite.position.set(left - hullLeft * sx, top - hullTop * sy);
+            survivalPlatformLayer.addChild(sprite);
+            return body;
+        });
+        const survivalSolids = [survivalGround, ...survivalPlatforms];
+        Composite.add(engine.world, [...survivalBounds, ...survivalPlatforms]);
+
+        // The top of a body at x (the highest point where a straight line down from above meets its outline)
+        function surfaceY(body, x) {
+            let best = Infinity;
+            const v = body.vertices;
+            v.forEach((a, i) => {
+                const b = v[(i + 1) % v.length];
+                if ((a.x - x) * (b.x - x) > 0 || a.x === b.x) return;
+                best = Math.min(best, a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x));
+            });
+            return best === Infinity ? GROUND_Y : best;
+        }
+
+        const enemies = SURVIVAL_ENEMIES.map((def, i) => {
+            const on = def.on === undefined ? survivalGround : survivalPlatforms[def.on];
+            const from = def.on === undefined ? SURVIVAL_LEVEL.left + def.from : on.bounds.min.x + 50;
+            const to = def.on === undefined ? SURVIVAL_LEVEL.left + def.to : on.bounds.max.x - 50;
+            const texture = survivalTextures[def.art];
+            const scale = ENEMY_HEIGHT / texture.height;
+            const sprite = new PIXI.Sprite(texture);
+            sprite.anchor.set(0.5, 0.92);
+            enemyLayer.addChild(sprite);
+            // Not in the physics world: it's only used to check whether the bear touches the blob
+            const body = Bodies.circle(0, 0, ENEMY_HEIGHT * 0.4, { isSensor: true, isStatic: true });
+            return { on, from, to, sprite, scale, body, speed: 1.4 + (i % 3) * 0.4, start: (from + to) / 2, x: 0, direction: 1, dead: false, squash: 0,
+                hopPower: 14 + (i % 3) * 2, hopY: 0, hopSpeed: 0, nextHop: 0, index: i };
+        });
+
+        function drawGoal() {
+            // A big marker-drawn star the bear has to reach
+            const star = new PIXI.Graphics();
+            star.star(0, 0, 5, 80, 38).fill(0xffe45c).stroke({ width: 12, color: 0x0a0014, join: 'round' });
+            star.star(-10, -12, 5, 30, 14).fill({ color: 0xffffff, alpha: 0.6 });
+            const glow = new PIXI.Graphics();
+            for (let r = 150; r > 60; r -= 15) glow.circle(0, 0, r).fill({ color: 0xfff6a0, alpha: 0.08 });
+            goalSprite.addChild(glow, star);
+            goalSprite.position.set(SURVIVAL_LEVEL.left + GOAL_X, GROUND_Y - 170);
+        }
+
+        drawSurvivalBackground();
+        drawGoal();
+        survivalLayer.addChild(survivalPlatformLayer, goalSprite, enemyLayer);
+
+        // 'running', 'hurt' (one hit and it's back to the start) or 'won'
+        const survival = { state: 'running', until: 0, tick: 0, lastGrounded: -99, lastJump: -99, nextBurst: 0, bursts: 0 };
+
+        function restartSurvival() {
+            survival.state = 'running';
+            survival.tick = 0;
+            survival.lastGrounded = survival.lastJump = -99;
+            enemies.forEach(enemy => {
+                enemy.x = enemy.start;
+                enemy.direction = 1;
+                enemy.dead = false;
+                enemy.squash = 0;
+                enemy.hopY = enemy.hopSpeed = 0;
+                enemy.nextHop = 60 + (enemy.index * 37) % 120;
+                enemy.sprite.visible = true;
+                enemy.sprite.alpha = 1;
+            });
+            sparkles.splice(0).forEach(s => s.g.destroy());
+            if (driver) driver.tint = 0xffffff;
+            spawnCar();
+            updateCamera(true);
+        }
+
+        // A wheel is on something solid if a slightly lower, slightly thinner circle would touch it
+        const footProbe = Bodies.circle(0, 0, 26);
+        function onSolidGround() {
+            return car.wheels.some(wheel => {
+                Body.setPosition(footProbe, { x: wheel.position.x, y: wheel.position.y + 8 });
+                return Query.collides(footProbe, survivalSolids).length > 0;
+            });
+        }
+
+        // Only from something solid (with a few frames' grace after rolling off an edge)
+        function survivalJump() {
+            const grounded = onSolidGround() || survival.tick - survival.lastGrounded <= 6;
+            if (survival.state !== 'running' || !grounded || survival.tick - survival.lastJump < 15) return;
+            survival.lastJump = survival.tick;
+            setCarRise(JUMP_SPEED);
+            blip(520, 0.1, 'triangle');
+        }
+
+        function setCarRise(speed) {
+            car.bodies.forEach(body => Body.setVelocity(body, { x: body.velocity.x, y: -speed }));
+        }
+
+        function hurtBear(now) {
+            survival.state = 'hurt';
+            survival.until = now + 1200;
+            showToast('Ouch! Back to the start');
+            blip(260, 0.35, 'sawtooth');
+        }
+
+        function winLevel(now) {
+            survival.state = 'won';
+            survival.until = now + 6000;
+            survival.bursts = 0;
+            survival.nextBurst = now;
+            showToast('You made it!');
+            [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => blip(f, 0.25, 'triangle'), i * 120));
+        }
+
+        // ---------- Sparkles ----------
+
+        const sparkles = [];
+        const SPARKLE_COLORS = [0xffe45c, 0xffffff, 0xff7eb6, 0x7fe3ff, 0xa6ff7a, 0xffa500];
+
+        function burstSparkles(x, y, count) {
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2, speed = 4 + Math.random() * 12;
+                const size = 8 + Math.random() * 14;
+                const g = new PIXI.Graphics().star(0, 0, 4, size, size * 0.35).fill(SPARKLE_COLORS[i % SPARKLE_COLORS.length]);
+                g.position.set(x, y);
+                sparkleLayer.addChild(g);
+                sparkles.push({ g, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 6, spin: Math.random() * 0.3 - 0.15, life: 1, fade: 0.008 + Math.random() * 0.01 });
+            }
+        }
+
+        function updateSparkles() {
+            for (let i = sparkles.length - 1; i >= 0; i--) {
+                const s = sparkles[i];
+                s.vy += 0.25;
+                s.vx *= 0.98;
+                s.g.x += s.vx;
+                s.g.y += s.vy;
+                s.g.rotation += s.spin;
+                s.life -= s.fade;
+                s.g.alpha = Math.min(1, s.life * 2);
+                s.g.scale.set(0.6 + 0.4 * Math.abs(Math.sin(s.life * 12)));
+                if (s.life <= 0) {
+                    s.g.destroy();
+                    sparkles.splice(i, 1);
+                }
+            }
+        }
+
+        function updateSurvival(now) {
+            goalSprite.rotation = 0.08 * Math.sin(now / 400);
+            goalSprite.scale.set(1 + 0.06 * Math.sin(now / 250));
+            updateSparkles();
+
+            if (survival.state === 'hurt') {
+                // The character flashes red and shakes, then the level starts over
+                driver.tint = Math.floor(now / 100) % 2 ? 0xff4040 : 0xffffff;
+                carContainer.position.x += Math.sin(now / 20) * 6;
+                if (now >= survival.until) restartSurvival();
+                return;
+            }
+            if (survival.state === 'won') {
+                if (survival.bursts < 6 && now >= survival.nextBurst) {
+                    const p = survival.bursts % 2 ? car.base.position : goalSprite.position;
+                    burstSparkles(p.x + Math.random() * 120 - 60, p.y - 120 - Math.random() * 80, survival.bursts ? 40 : 90);
+                    survival.bursts++;
+                    survival.nextBurst = now + 250;
+                }
+                if (now >= survival.until) restartSurvival();
+            }
+            survival.tick++;
+            if (onSolidGround()) survival.lastGrounded = survival.tick;
+
+            enemies.forEach(enemy => {
+                if (enemy.dead) {
+                    // Squished flat, then gone
+                    enemy.squash = Math.min(1, enemy.squash + 0.08);
+                    enemy.sprite.scale.set(enemy.scale * (1 + enemy.squash * 0.5), enemy.scale * (1 - enemy.squash * 0.75));
+                    enemy.sprite.alpha = 1 - enemy.squash;
+                    if (enemy.squash >= 1) enemy.sprite.visible = false;
+                    return;
+                }
+                enemy.x += enemy.speed * enemy.direction;
+                if (enemy.x > enemy.to) enemy.direction = -1;
+                if (enemy.x < enemy.from) enemy.direction = 1;
+                // Every few seconds a blob crouches and hops up high enough to bonk the character
+                if (enemy.hopY === 0 && survival.tick >= enemy.nextHop) {
+                    enemy.hopSpeed = -enemy.hopPower;
+                    enemy.nextHop = survival.tick + 150 + Math.floor(Math.random() * 120);
+                }
+                if (enemy.hopSpeed !== 0) {
+                    enemy.hopY += enemy.hopSpeed;
+                    enemy.hopSpeed += 0.6;
+                    if (enemy.hopY >= 0) enemy.hopY = enemy.hopSpeed = 0;
+                }
+                const y = surfaceY(enemy.on, enemy.x) + enemy.hopY;
+                const wobble = enemy.hopY < 0 ? 0 : Math.abs(Math.sin(now / 160 + enemy.start));
+                const crouch = enemy.hopY === 0 ? Math.max(0, 1 - (enemy.nextHop - survival.tick) / 20) : 0;
+                const stretch = enemy.hopY < 0 ? 0.15 : -0.05 * wobble - 0.25 * crouch;
+                enemy.sprite.position.set(enemy.x, y - wobble * 6);
+                enemy.sprite.scale.set(enemy.scale * -enemy.direction * (1 - stretch * 0.6), enemy.scale * (1 + stretch));
+                Body.setPosition(enemy.body, { x: enemy.x, y: y - ENEMY_HEIGHT * 0.42 });
+                if (survival.state !== 'running') return;
+
+                // The car (wheels and body) squishes a blob from any side, bouncing up if it landed on it.
+                // Only the character riding in it gets hurt
+                const squished = Query.collides(enemy.body, [...car.wheels, car.base]).length > 0;
+                if (squished) {
+                    enemy.dead = true;
+                    if (car.chassis.velocity.y > 0.5 && car.base.position.y < enemy.body.position.y) setCarRise(STOMP_BOUNCE);
+                    burstSparkles(enemy.x, y - 40, 14);
+                    blip(880, 0.12, 'square');
+                } else if (Query.collides(enemy.body, [car.head]).length > 0) {
+                    hurtBear(now);
+                }
+            });
+
+            if (survival.state === 'running' && car.base.position.x >= goalSprite.x - 60) winLevel(now);
+        }
+
         // ---------- Main menu (hand-drawn) and pause menu ----------
 
-        const game = { state: 'menu' }; // 'menu', 'creator', 'playing' or 'paused'
+        const game = { state: 'menu', mode: 'explore' }; // state is 'menu', 'creator', 'playing' or 'paused'; mode is 'explore' or 'survival'
 
         // The menu art is 2224x1668, and each button sits where it was drawn (layers of main-menu.psd)
         const MENU_ART = { w: 2224, h: 1668 };
@@ -1244,8 +1605,8 @@
 
         function chooseMenuItem() {
             const item = menuItems[menu.index];
-            if (item.id === 'explore') {
-                openCreator();
+            if (item.id === 'explore' || item.id === 'survival') {
+                openCreator(item.id);
             } else {
                 showToast(item.label + ' is coming soon!');
                 blip(330, 0.12, 'triangle');
@@ -1401,7 +1762,7 @@
         creatorCharacter.position.set(CREATOR_NECK.x, CREATOR_NECK.y);
 
         // The cursor points at one piece at a time; moving it never picks anything, A / Enter / a click does
-        const creator = { cursor: 0 };
+        const creator = { cursor: 0, mode: 'explore' };
         const creatorItems = [];
         const CURSOR_COLOR = 0xff0022;
 
@@ -1512,7 +1873,13 @@
             blip(520 + g.options.indexOf(c.option) * 60, 0.06);
         }
 
-        function openCreator() {
+        // The creator's go button is the menu button for the mode you picked
+        function openCreator(mode) {
+            creator.mode = mode;
+            const go = creatorItems.find(c => c.option === 'go');
+            const button = menuItems.find(m => m.id === mode);
+            go.glow.texture = button.glowTexture;
+            go.item.children.at(-1).texture = button.texture;
             clearInput();
             look = loadLook();
             redrawCharacter();
@@ -1524,7 +1891,8 @@
         function finishCreator() {
             saveLook();
             dressBear();
-            startExplore();
+            if (creator.mode === 'survival') startSurvival();
+            else startExplore();
         }
 
         function updateCreator(now) {
@@ -1632,15 +2000,34 @@
             creatorScreen.visible = game.state === 'creator';
             pixiParent.visible = hud.visible = game.state === 'playing' || game.state === 'paused';
             pauseMenu.visible = game.state === 'paused';
+            const survivalMode = game.mode === 'survival';
+            backgroundLayer.visible = decorLayer.visible = blockLayer.visible = !survivalMode;
+            survivalLayer.visible = sparkleLayer.visible = survivalMode;
+            for (const id of ['edit', 'spawn', 'clear']) buttons[id].visible = !survivalMode;
+            buttons.reset.setLabel(survivalMode ? 'Restart Level (R)' : 'Reset Bear (R)');
+            pauseItems[1].text.text = survivalMode ? 'Restart Level' : 'Reset Bear';
+            layoutHud();
         }
 
         function startExplore() {
             if (!playedInitialAudio) playInitialAudio();
             clearInput();
+            game.mode = 'explore';
+            level = EXPLORE_LEVEL;
             resetScene();
             game.state = 'playing';
             updateScreens();
             updateCamera(true);
+        }
+
+        function startSurvival() {
+            clearInput();
+            setEditMode(false);
+            game.mode = 'survival';
+            level = SURVIVAL_LEVEL;
+            resetScene();
+            game.state = 'playing';
+            updateScreens();
         }
 
         function showMainMenu() {
@@ -1758,7 +2145,8 @@
             editor.held = null;
             blocks.filter(b => b.tile === LETTER_TILE).forEach(removeBlock);
             currentLetterIndex = 0;
-            spawnCar();
+            if (game.mode === 'survival') restartSurvival();
+            else spawnCar();
         }
 
         function toggleDebug() {
@@ -1772,13 +2160,18 @@
             updateMenus(now);
             if (game.state === 'menu' || game.state === 'creator') return;
 
-            if (game.state === 'playing' && !editor.active) {
+            const playing = game.state === 'playing' && !editor.active;
+            if (playing) {
+                // In survival the bear can't drive once it's been hit or has won, and everything stops while it's hurt
+                const canDrive = game.mode !== 'survival' || survival.state === 'running';
                 const xDirection = input.xDirection ?? gamepadXDirection;
-                if (xDirection !== null || input.yDirection !== null) {
-                    moveCar(xDirection, input.yDirection)
+                if (canDrive && (xDirection !== null || input.yDirection !== null)) {
+                    moveCar(xDirection)
                 }
-                Engine.update(engine, 1000 / 60);
-                limitCar();
+                if (game.mode !== 'survival' || survival.state !== 'hurt') {
+                    Engine.update(engine, 1000 / 60);
+                    limitCar();
+                }
             }
 
             blocks.forEach(block => {
@@ -1787,6 +2180,7 @@
                 block.sprite.rotation = block.body.angle;
             });
             renderCar();
+            if (playing && game.mode === 'survival') updateSurvival(now);
             updateCamera();
             drawEditorOverlay(now);
             updateHud();
@@ -2046,7 +2440,8 @@
                 }
             } else if (key === ' ') {
                 e.preventDefault();
-                spawnRandomObject();
+                if (game.mode === 'survival') jump();
+                else spawnRandomObject();
             } else if (key === 'ArrowRight') {
                 input.xDirection = "right"
             } else if (key === 'ArrowLeft') {
@@ -2071,7 +2466,7 @@
         initScene();
 
         // Handy for poking at the game from the browser console
-        window.bearGame = { game, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
+        window.bearGame = { app, game, survival, enemies, onSolidGround, survivalSolids, Query, Body, startSurvival, restartSurvival, burstSparkles, get level() { return level; }, menu, startExplore, openCreator, finishCreator, get look() { return look; }, creator, creatorItems, creatorConfirm, moveCreatorCursor, pointAt, showMainMenu, pauseGame, resumeGame, engine, buttons, blocks, editor, get car() { return car; }, setEditMode, editPrimary, editGrab, editDelete, editRotate, editTogglePin, moveCursor, setCursor, cycleTile, selectTile, resolveBearOverlap, carHitsBlocks, jump, TILES };
     </script>
 </body>
 

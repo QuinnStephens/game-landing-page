@@ -4,7 +4,7 @@ A Pixi + Matter.js physics game. It's a single static `index.html` with assets i
 
 ## Main menu
 
-The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** opens the character creator; **Creative** and **Survival** say "coming soon" for now.
+The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** and **Survival** open the character creator first; **Creative** says "coming soon" for now.
 
 The menu art lives in `public/img/menu/`: `background.jpg` and one PNG per button, cut from the layers of the original drawing, plus a `-glow.png` for each button's highlight. Button positions in `index.html` (`MENU_BUTTONS`) are the layer positions in that 2224x1668 drawing.
 
@@ -22,9 +22,15 @@ Only humans can change how they look: a bear is just a brown bear, so the other 
 
 The pieces are in `public/img/creator/`, with `layout.json` saying where each one sat in the 2224x1668 drawing. `tools/cut_creator_art.py` cut them out of the drawing (it needs numpy, scipy and Pillow), so changes to the drawing can be re-cut with `python3 tools/cut_creator_art.py character-creator-design.png`. How clothes and hair fit on the character is in `index.html` (`CLOTHES_BOXES`, `HAIR_BOXES`).
 
+## Survival
+
+A platformer level cut from the hand-drawn survival design: purple scribbles, black-outlined platforms and little blue blobs that patrol back and forth. You drive the same way as in Explore, but there's no build mode and no letter blocks, and you can only jump from something solid (Space jumps too). Run into a blob with the car (or land on it) to squish it. Every few seconds a blob crouches and hops; if one bonks your character instead of the car, it's back to the start, since you only get one hit. Reach the big star at the end for a burst of sparkles, and the level starts over a few seconds later.
+
+The blobs and platforms are in `public/img/survival/`, cut out of the drawing by `tools/cut_survival_art.py` (`python3 tools/cut_survival_art.py survival-design.png`; it needs numpy, scipy and Pillow). `layout.json` has each piece's size and, for platforms, the outline of the solid part. The level itself is `SURVIVAL_PLATFORMS` and `SURVIVAL_ENEMIES` in `index.html`, and `JUMP_SPEED` sets how high the bear jumps.
+
 ## Pausing
 
-Press Esc or Start (or the **Pause** button) to pause. The pause menu has **Keep Playing**, **Reset Bear** and **Main Menu**. B, Start or Esc closes it.
+Press Esc or Start (or the **Pause** button) to pause. The pause menu has **Keep Playing**, **Reset Bear** (**Restart Level** in Survival) and **Main Menu**. B, Start or Esc closes it.
 
 ## Controls
 
