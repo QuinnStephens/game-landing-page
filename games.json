@@ -14,25 +14,25 @@
   {
     "title": "Baba Boo Bee Ba",
     "tagline": "Get to the blue planet.",
-    "url": "https://baba-o0y.pages.dev/",
+    "url": "/baba/",
     "image": "images/baba.png"
   },
   {
     "title": "My Kingdom",
     "tagline": "Be a bear, be a human, make this kingdom yours.",
-    "url": "https://yetz-game.pages.dev",
+    "url": "/my-kingdom/",
     "image": "images/kingdom.png"
   },
   {
     "title": "In My Mom's Tummy",
     "tagline": "Enjoy the womb.",
-    "url": "https://in-my-moms-tummy.pages.dev",
+    "url": "/in-my-moms-tummy/",
     "image": "images/tummy.png"
   },
   {
     "title": "Jojo Finds Momo",
     "tagline": "Monkeys!",
-    "url": "https://jojo-finds-momo.pages.dev",
+    "url": "/jojo-finds-momo/",
     "image": "images/jojo.png"
   },
   {

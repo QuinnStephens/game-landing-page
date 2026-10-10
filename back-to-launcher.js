@@ -1,8 +1,11 @@
-// Paste into each game (or load with <script src="...">).
+// Every game loads this with <script src="../back-to-launcher.js"></script>.
 // Hold Select + Start (Share + Options on a PS4 pad) for 1 second to return to the launcher.
+// Escape also returns to the launcher, unless the script tag has data-no-escape
+// (for games that use Escape themselves, like My Kingdom's pause menu).
 (() => {
-  const LAUNCHER_URL = 'https://YOUR-LAUNCHER.pages.dev/'; // <- change this
+  const LAUNCHER_URL = '/';
   const HOLD_MS = 1000;
+  const useEscape = !document.currentScript?.hasAttribute('data-no-escape');
   let since = null;
 
   function tick(now) {
@@ -19,5 +22,5 @@
   requestAnimationFrame(tick);
 
   // Keyboard fallback for desktop testing: Escape
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') location.href = LAUNCHER_URL; });
+  if (useEscape) addEventListener('keydown', (e) => { if (e.key === 'Escape') location.href = LAUNCHER_URL; });
 })();
