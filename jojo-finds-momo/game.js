@@ -18,6 +18,7 @@
     title: await PIXI.Assets.load('assets/title.jpg'),
     jojo: await PIXI.Assets.load('assets/jojo.png'),
     momo: await PIXI.Assets.load('assets/momo.png'),
+    sign: await PIXI.Assets.load('assets/sign.png'), // placeholder: swap in Violeta's drawing
   };
 
   // ---------- helpers ----------
@@ -85,6 +86,8 @@
   }
   const fanfare = () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i * 0.14, 0.3, 'square', 0.08));
   const startJingle = () => [392, 523, 659].forEach((f, i) => tone(f, i * 0.09, 0.2, 'triangle', 0.15));
+  const tick = () => tone(1200, 0, 0.06, 'square', 0.06);
+  const wahWah = () => [392, 370, 349, 311].forEach((f, i) => tone(f, i * 0.32, i === 3 ? 0.8 : 0.3, 'triangle', 0.14));
 
   // ---------- screen ----------
   let W = 0, H = 0, zoom = 1;
@@ -106,10 +109,18 @@
   const pillBox = new PIXI.Container();
   pillBox.position.set(14, 14);
   pillBox.addChild(pill, pillIcon, counter);
+  const clockPill = new PIXI.Graphics().roundRect(0, 0, 190, 56, 28).fill({ color: 0x000000, alpha: 0.45 });
+  const clockIcon = new PIXI.Graphics()
+    .circle(28, 28, 19).fill(0xffffff).stroke({ width: 4, color: 0x000000 })
+    .moveTo(28, 28).lineTo(28, 16).moveTo(28, 28).lineTo(37, 31).stroke({ width: 4, color: 0x000000, cap: 'round' });
+  const clockText = bubbleText('0:00', 28, 0xffffff);
+  clockText.position.set(10 + 46 + (190 - 46 - 20) / 2, 30);
+  const clockBox = new PIXI.Container();
+  clockBox.position.set(14, 14 + 56 + 10);
+  clockBox.addChild(clockPill, clockIcon, clockText);
   const soundBtn = new PIXI.Graphics();
-  const arrows = new PIXI.Graphics();
   const banner = bubbleText('', 46);
-  hud.addChild(arrows, pillBox, soundBtn, banner);
+  hud.addChild(pillBox, clockBox, soundBtn, banner);
 
   const winLayer = new PIXI.Container();
   const winShade = new PIXI.Graphics();
@@ -119,13 +130,25 @@
   const again = bubbleText('Tap for more Momos!', 42, 0x7dff6a);
   winLayer.addChild(winShade, confettiG, hooray, winMsg, again);
 
+  // Time's up: Jojo walks right up to the screen and holds up a sign.
+  const loseLayer = new PIXI.Container();
+  const loseShade = new PIXI.Graphics();
+  const bigJojo = new PIXI.Container();
+  const bigSign = new PIXI.Sprite(tex.sign);
+  bigSign.anchor.set(0.5, 1);
+  const bigJojoSprite = new PIXI.Sprite(tex.jojo);
+  bigJojoSprite.anchor.set(0.5, 1);
+  bigJojo.addChild(bigSign, bigJojoSprite);
+  const tryAgain = bubbleText('Tap to try again!', 42, 0x7dff6a);
+  loseLayer.addChild(loseShade, bigJojo, tryAgain);
+
   const titleLayer = new PIXI.Container();
   const titleImg = new PIXI.Sprite(tex.title);
   titleImg.anchor.set(0.5);
   const tapToPlay = bubbleText('Tap to play!', 48, 0xffd23f);
   titleLayer.addChild(titleImg, tapToPlay);
 
-  app.stage.addChild(worldLayer, hud, winLayer, titleLayer);
+  app.stage.addChild(worldLayer, hud, winLayer, loseLayer, titleLayer);
 
   function layout() {
     W = app.screen.width;
@@ -153,6 +176,9 @@
     again.style.fontSize = size * 0.8;
     again.position.set(W / 2, H - Math.max(50, H * 0.1));
     winShade.clear().rect(0, 0, W, H).fill({ color: 0x000000, alpha: 0.25 });
+    loseShade.clear().rect(0, 0, W, H).fill({ color: 0xffffff, alpha: 0.35 });
+    tryAgain.style.fontSize = size * 0.8;
+    tryAgain.position.set(W / 2, H - Math.max(50, H * 0.1));
   }
   app.renderer.on('resize', layout);
   layout();
@@ -210,6 +236,7 @@
   window.addEventListener('gamepadconnected', () => {
     tapToPlay.text = 'Press A to play!';
     again.text = 'Press A for more Momos!';
+    tryAgain.text = 'Press A to try again!';
   });
 
   const pointer = { down: false, x: 0, y: 0, id: null };
@@ -243,10 +270,11 @@
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // ---------- game state ----------
-  let state = 'title'; // title | play | win
+  let state = 'title'; // title | play | win | timeup
   let stateTime = 0;
   let time = 0;
   let level = 1;
+  let timeLeft = 0;
   let world = { w: 2000, h: 2000 };
   let trees = [], monkeys = [], sparkles = [], confetti = [], butterflies = [];
   const jojo = { x: 0, y: 0, vx: 0, vy: 0, face: 1, walk: 0, trail: [], char: null };
@@ -264,7 +292,9 @@
     worldLayer.visible = s !== 'title';
     hud.visible = s === 'play';
     winLayer.visible = s === 'win';
+    loseLayer.visible = s === 'timeup';
     again.visible = false;
+    tryAgain.visible = false;
   }
   setState('title');
 
@@ -276,10 +306,16 @@
     } else if (state === 'win' && stateTime > 1.2) {
       level++;
       startLevel();
+    } else if (state === 'timeup' && stateTime > LOSE_READY) {
+      startLevel(); // same level again, with a fresh jungle
     }
   }
 
   const monkeysForLevel = (n) => Math.min(4 + n * 2, 30);
+  // 20 seconds per Momo: 2:00 for level 1's six, 2:40 for level 2's eight, and so on.
+  const SECONDS_PER_MOMO = 20;
+  const LOSE_WALK = 1.6; // how long Jojo takes to walk up to the screen
+  const LOSE_READY = 3; // when "try again" shows up
 
   // A standing thing in the world: a shadow plus a sprite that can hop, tilt and flip.
   function makeCharacter(texture, h, shadowW) {
@@ -413,6 +449,7 @@
     jojo.char = makeCharacter(tex.jojo, JOJO_H, 30);
 
     cam.x = jojo.x; cam.y = jojo.y - JOJO_H / 2;
+    timeLeft = count * SECONDS_PER_MOMO;
     banner.text = level === 1 ? 'Find all the Momos!' : `Level ${level}: find ${count} Momos!`;
     setState('play');
     startJingle();
@@ -447,6 +484,7 @@
     time += dt;
     if (state === 'play') updatePlay(dt);
     if (state === 'win') updateWin(dt);
+    if (state === 'timeup') updateTimeUp(dt);
     for (const s of sparkles) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 300 * dt; s.life -= dt; }
     sparkles = sparkles.filter((s) => s.life > 0);
     for (const b of butterflies) {
@@ -457,6 +495,15 @@
   }
 
   function updatePlay(dt) {
+    const before = Math.ceil(timeLeft);
+    timeLeft = Math.max(0, timeLeft - dt);
+    if (Math.ceil(timeLeft) < before && before <= 5 && timeLeft > 0) tick();
+    if (timeLeft <= 0) {
+      setState('timeup');
+      wahWah();
+      return;
+    }
+
     let ix = 0, iy = 0;
     if (keys.has('arrowleft') || keys.has('a')) ix -= 1;
     if (keys.has('arrowright') || keys.has('d')) ix += 1;
@@ -552,6 +599,22 @@
     cam.y += (jojo.y - JOJO_H / 2 - cam.y) * Math.min(1, dt * 4);
   }
 
+  function updateTimeUp(dt) {
+    // The Momos you didn't find keep wandering about.
+    for (const m of monkeys) {
+      m.phase += dt;
+      if (m.found) continue;
+      m.timer -= dt;
+      if (m.timer <= 0) {
+        m.timer = rand(1, 3);
+        if (Math.random() < 0.5) { m.vx = 0; m.vy = 0; }
+        else { const a = rand(0, 6.28); m.vx = Math.cos(a) * 55; m.vy = Math.sin(a) * 55; }
+      }
+      moveWithCollision(m, m.vx * dt, m.vy * dt, 14);
+      if (Math.abs(m.vx) > 1) m.face = m.vx > 0 ? 1 : -1;
+    }
+  }
+
   // ---------- drawing ----------
   function placeCharacter(o, hop, rot) {
     const { view, sprite, base } = o.char;
@@ -583,6 +646,7 @@
     const vx0 = cam.x - W / 2 / zoom, vx1 = cam.x + W / 2 / zoom;
     const vy0 = cam.y - H / 2 / zoom, vy1 = cam.y + H / 2 / zoom;
 
+    jojo.char.view.visible = state !== 'timeup'; // the big Jojo takes over
     if (state === 'win') {
       placeCharacter(jojo, Math.abs(Math.sin(time * 6)) * 24, 0);
     } else {
@@ -612,31 +676,19 @@
 
     if (state === 'play') renderHud();
     if (state === 'win') renderWin();
+    if (state === 'timeup') renderTimeUp();
   }
 
   function renderHud() {
     const found = monkeys.filter((m) => m.found).length;
     counter.text = `${found} / ${monkeys.length}`;
 
-    // Arrows at the screen edge pointing toward Momos you can't see yet.
-    const margin = 34;
-    const pulse = 1 + Math.sin(time * 5) * 0.12;
-    arrows.clear();
-    for (const m of monkeys) {
-      if (m.found) continue;
-      const sx = W / 2 + (m.x - cam.x) * zoom;
-      const sy = H / 2 + (m.y - MOMO_H / 2 - cam.y) * zoom;
-      if (sx > 0 && sx < W && sy > 0 && sy < H) continue;
-      const dx = sx - W / 2, dy = sy - H / 2;
-      const s = Math.min((W / 2 - margin) / Math.abs(dx || 1e-6), (H / 2 - margin) / Math.abs(dy || 1e-6));
-      const ax = W / 2 + dx * s, ay = H / 2 + dy * s;
-      const a = Math.atan2(dy, dx);
-      const c = Math.cos(a) * pulse, sn = Math.sin(a) * pulse;
-      const pt = (px, py) => [ax + px * c - py * sn, ay + px * sn + py * c];
-      arrows.poly([...pt(16, 0), ...pt(-10, -12), ...pt(-4, 0), ...pt(-10, 12)])
-        .fill({ color: 0xffd23f, alpha: 0.9 })
-        .stroke({ width: 3, color: 0x000000, alpha: 0.6 });
-    }
+    const secs = Math.ceil(timeLeft);
+    clockText.text = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+    const hurry = secs <= 10;
+    clockText.style.fill = hurry ? 0xff5a5a : 0xffffff;
+    clockBox.scale.set(hurry ? 1 + Math.abs(Math.sin(time * 6)) * 0.08 : 1);
+
 
     banner.visible = stateTime < 3;
     banner.alpha = clamp(3 - stateTime, 0, 1);
@@ -653,6 +705,34 @@
     again.scale.set(1 + Math.sin(time * 4) * 0.06);
   }
 
+  function renderTimeUp() {
+    // Jojo starts where she was standing and walks toward you, getting bigger.
+    const t = clamp(stateTime / LOSE_WALK, 0, 1);
+    const ease = 1 - (1 - t) * (1 - t);
+    const startX = W / 2 + (jojo.x - cam.x) * zoom;
+    const startY = H / 2 + (jojo.y - cam.y) * zoom;
+    const endH = H * 0.42;
+    const endX = W / 2, endY = H * 0.83; // leaves room for "try again" underneath
+    const h = JOJO_H * zoom + (endH - JOJO_H * zoom) * ease;
+    const walking = t < 1;
+    bigJojoSprite.scale.set(h / tex.jojo.height);
+    bigJojo.position.set(startX + (endX - startX) * ease, startY + (endY - startY) * ease - (walking ? Math.abs(Math.sin(stateTime * 12)) * h * 0.05 : 0));
+    bigJojo.rotation = walking ? Math.sin(stateTime * 12) * 0.06 : 0;
+
+    // Then up goes the sign, held over her head.
+    const up = clamp((stateTime - LOSE_WALK) / 0.35, 0, 1);
+    const pop = up < 1 ? up * (1 + Math.sin(up * Math.PI) * 0.25) : 1 + Math.sin((stateTime - LOSE_WALK) * 3) * 0.02;
+    const signW = Math.min(W * 0.8, H * 0.5);
+    bigSign.visible = up > 0;
+    bigSign.scale.set((signW / tex.sign.width) * pop);
+    // The board's bottom edge (70% of the way down the picture) sits just over her head.
+    bigSign.position.set(0, -h * 0.92 + bigSign.height * 0.3);
+    bigSign.rotation = Math.sin(stateTime * 2.5) * 0.03;
+
+    tryAgain.visible = stateTime > LOSE_READY;
+    tryAgain.scale.set(1 + Math.sin(time * 4) * 0.06);
+  }
+
   // ---------- loop ----------
   app.ticker.add((ticker) => {
     pollGamepads();
@@ -660,5 +740,5 @@
     render();
   });
 
-  if (location.hash === '#debug') window.__jojo = { jojo, get monkeys() { return monkeys; }, get state() { return state; } };
+  if (location.hash === '#debug') window.__jojo = { jojo, get monkeys() { return monkeys; }, get state() { return state; }, get stateTime() { return stateTime; }, setTimeLeft: (t) => { timeLeft = t; } };
 })();
