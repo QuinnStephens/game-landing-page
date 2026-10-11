@@ -3,54 +3,72 @@
     "title": "Escape the School",
     "tagline": "1000 tests? No thank you.",
     "url": "/escape-the-school/",
-    "image": "images/escape-the-school.png"
+    "image": "images/escape-the-school.png",
+    "added": "2026-10-10T19:50",
+    "updated": "2026-10-11T18:44"
   },
   {
     "title": "Valley of the Omen: Return (Dev)",
     "tagline": "A woman on a mission. A valley swarming with cursed monsters. A boomerang.",
     "url": "https://omen.quinnstephens.com",
-    "image": "images/valley.png"
+    "image": "images/valley.png",
+    "added": "2026-10-08T23:00",
+    "updated": "2026-10-08T23:00"
   },
   {
     "title": "Valley of the Omen: Return (Alpha)",
     "tagline": "Something that's not finished yet.",
     "url": "http://omenalpha.quinnstephens.com",
-    "image": "images/valley-alpha.png"
+    "image": "images/valley-alpha.png",
+    "added": "2026-10-08T23:00",
+    "updated": "2026-10-08T23:00"
   },
   {
     "title": "Photo Taker",
     "tagline": "Take a picture of everything. Except the sleeping bear.",
     "url": "/photo-taker/",
-    "image": "images/photo-taker.png"
+    "image": "images/photo-taker.png",
+    "added": "2026-10-10T18:07",
+    "updated": "2026-10-10T18:20"
   },
   {
     "title": "Baba Boo Bee Ba",
     "tagline": "Get to the blue planet.",
     "url": "/baba/",
-    "image": "images/baba.png"
+    "image": "images/baba.png",
+    "added": "2026-10-09T19:51",
+    "updated": "2026-10-10T17:50"
   },
   {
     "title": "My Kingdom",
     "tagline": "Be a bear, be a human, make this kingdom yours.",
     "url": "/my-kingdom/",
-    "image": "images/kingdom.png"
+    "image": "images/kingdom.png",
+    "added": "2025-11-19T18:18",
+    "updated": "2026-10-10T18:03"
   },
   {
     "title": "In My Mom's Tummy",
     "tagline": "Enjoy the womb.",
     "url": "/in-my-moms-tummy/",
-    "image": "images/tummy.png"
+    "image": "images/tummy.png",
+    "added": "2026-10-08T20:43",
+    "updated": "2026-10-09T11:38"
   },
   {
     "title": "Jojo Finds Momo",
     "tagline": "Monkeys!",
     "url": "/jojo-finds-momo/",
-    "image": "images/jojo.png"
+    "image": "images/jojo.png",
+    "added": "2026-10-09T17:03",
+    "updated": "2026-10-09T22:23"
   },
   {
     "title": "Debonair Bear Adventures",
     "tagline": "Style, flair, and panache might just save the world.",
     "url": "https://debonair-bear.pages.dev",
-    "image": "images/debonair.png"
+    "image": "images/debonair.png",
+    "added": "2026-10-08T23:00",
+    "updated": "2026-10-09T12:45"
   }
 ]

@@ -108,6 +108,18 @@
     box-shadow: 0 0 0 4px var(--ink), 0 0 0 7px var(--accent), 0 18px 40px rgba(0,0,0,.5);
   }
 
+  .when { margin-top: 1vh; font-size: clamp(13px, 1.8vh, 20px); color: var(--muted); }
+  .sort {
+    font: inherit; color: var(--muted); background: rgba(239,234,255,.08);
+    border: 1px solid rgba(239,234,255,.18); border-radius: 999px; padding: .25em .9em .25em .35em;
+    display: inline-flex; align-items: center; gap: .5em; cursor: inherit;
+  }
+  .sort b { color: var(--text); font-weight: 600; }
+  .sort kbd {
+    font-family: var(--body); font-weight: 600; font-size: .85em; color: var(--text);
+    background: rgba(239,234,255,.14); border-radius: 50%; width: 1.7em; height: 1.7em;
+    display: inline-grid; place-items: center;
+  }
   .hint { color: var(--muted); font-size: clamp(13px, 1.7vh, 20px); display: flex; gap: 2em; }
   .hint b { color: var(--text); font-weight: 600; }
 
@@ -127,12 +139,14 @@
   <div class="app" id="app">
     <div class="top">
       <div class="brand">Quinn, Mezzie and Violeta's Games</div>
+      <button class="sort" id="sortBtn" type="button" hidden><kbd id="sortGlyph">S</kbd>Sort: <b id="sortName">Featured</b></button>
       <div id="padStatus"><span class="dot"></span><span id="padText">Press any controller button to connect</span></div>
     </div>
 
     <div class="hero" id="hero" hidden>
       <h1 id="title"></h1>
       <p id="tagline"></p>
+      <p class="when" id="when" hidden></p>
       <button class="play" id="playBtn" type="button"><kbd id="playGlyph">A</kbd> Play</button>
     </div>
 
@@ -146,8 +160,32 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const shelf = $('shelf'), bgs = [$('bgA'), $('bgB')];
-  let games = [], index = 0, flip = 0, launching = false;
-  const SAVE_KEY = 'launcher:last';
+  let all = [], games = [], index = 0, flip = 0, launching = false;
+  const SAVE_KEY = 'launcher:last', SORT_KEY = 'launcher:sort';
+
+  /* Sort orders. "added" and "updated" in games.json are dates like 2026-10-11T18:44;
+     bump "updated" whenever a game changes so it rises in "Recently updated". */
+  const SORTS = [
+    { id: 'featured', name: 'Featured', order: (list) => list },
+    { id: 'az', name: 'A to Z', order: (list) => [...list].sort((a, b) => a.title.localeCompare(b.title)) },
+    { id: 'updated', name: 'Recently updated', order: (list) => [...list].sort((a, b) => (b.updated || '').localeCompare(a.updated || '')), when: (g) => g.updated && 'Updated ' + day(g.updated) },
+    { id: 'newest', name: 'Newest', order: (list) => [...list].sort((a, b) => (b.added || '').localeCompare(a.added || '')), when: (g) => g.added && 'Added ' + day(g.added) },
+  ];
+  let sort = SORTS[0];
+  try { sort = SORTS.find((x) => x.id === localStorage.getItem(SORT_KEY)) || SORTS[0]; } catch (e) {}
+  function day(iso) {
+    const d = new Date(iso.slice(0, 10) + 'T12:00:00');
+    return isNaN(d) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+  }
+  function cycleSort() {
+    if (!all.length) return;
+    const current = games[index];
+    sort = SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length];
+    try { localStorage.setItem(SORT_KEY, sort.id); } catch (e) {}
+    games = sort.order(all);
+    build();
+    select(Math.max(0, games.indexOf(current)), true);
+  }
 
   const hue = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const art = (g) => {
@@ -160,19 +198,27 @@
     try {
       const res = await fetch('games.json', { cache: 'no-cache' });
       if (!res.ok) throw new Error(res.status);
-      games = (await res.json()).filter((g) => g.title && g.url);
-      if (!games.length) throw new Error('empty');
+      all = (await res.json()).filter((g) => g.title && g.url);
+      if (!all.length) throw new Error('empty');
+      games = sort.order(all);
     } catch (e) {
       $('app').insertAdjacentHTML('beforeend',
         '<div class="empty"><h1>No games found</h1>Add entries to games.json (each needs a title and url) and reload. If you opened this file directly from disk, host it instead: the browser blocks loading games.json from a local file.</div>');
       return;
     }
-    try { index = Math.min(+localStorage.getItem(SAVE_KEY) || 0, games.length - 1); } catch (e) {}
+    // The last game played is remembered by its url, since the order can change.
+    try { index = Math.max(0, games.findIndex((g) => g.url === localStorage.getItem(SAVE_KEY))); } catch (e) {}
     build();
+    $('hero').hidden = false;
+    $('playBtn').addEventListener('click', launch);
+    $('sortBtn').hidden = false;
+    $('sortBtn').addEventListener('click', (e) => { cycleSort(); e.currentTarget.blur(); });
     select(index, true);
   }
 
   function build() {
+    shelf.textContent = '';
+    $('sortName').textContent = sort.name;
     games.forEach((g, i) => {
       const t = document.createElement('button');
       t.type = 'button'; t.className = 'tile'; t.setAttribute('role', 'option');
@@ -188,8 +234,6 @@
       t.addEventListener('click', () => (i === index ? launch() : select(i)));
       shelf.appendChild(t);
     });
-    $('hero').hidden = false;
-    $('playBtn').addEventListener('click', launch);
   }
 
   function select(i, instant) {
@@ -201,13 +245,15 @@
     });
     $('title').textContent = g.title;
     $('tagline').textContent = g.tagline || '';
+    const when = sort.when && sort.when(g);
+    $('when').hidden = !when; $('when').textContent = when || '';
     // crossfade backdrop
     flip = 1 - flip;
     bgs[flip].style.backgroundImage = art(g);
     bgs[flip].classList.add('on');
     bgs[1 - flip].classList.remove('on');
     shelf.children[index].scrollIntoView({ inline: 'center', block: 'nearest', behavior: instant ? 'auto' : 'smooth' });
-    try { localStorage.setItem(SAVE_KEY, index); } catch (e) {}
+    try { localStorage.setItem(SAVE_KEY, g.url); } catch (e) {}
   }
 
   function launch() {
@@ -223,6 +269,7 @@
     if (e.key === 'ArrowLeft') { select(index - 1); e.preventDefault(); }
     else if (e.key === 'ArrowRight') { select(index + 1); e.preventDefault(); }
     else if (e.key === 'Enter' || e.key === ' ') { launch(); e.preventDefault(); }
+    else if (e.key === 's' || e.key === 'S') { lastInput = 'key'; applyGlyph(); cycleSort(); }
   });
   addEventListener('mousemove', () => document.body.classList.add('mouse'), { once: true });
 
@@ -235,8 +282,8 @@
   }
   function poll(now) {
     const pads = (navigator.getGamepads ? [...navigator.getGamepads()] : []).filter(Boolean);
-    let left = false, right = false, go = false, sel = false;
-    if (!!pads.length !== connected) { connected = !!pads.length; applyGlyph(); }
+    let left = false, right = false, go = false, sel = false, srt = false;
+    if (!!pads.length !== connected) { connected = !!pads.length; lastInput = connected ? 'pad' : 'key'; applyGlyph(); }
     if (pads[0]) {
       const kind = identify(pads[0].id);
       if (kind !== detected) {
@@ -250,6 +297,7 @@
       right = right || !!p.buttons[15]?.pressed || p.axes[0] > 0.6;
       go    = go    || !!p.buttons[0]?.pressed;
       sel   = sel   || !!p.buttons[8]?.pressed;
+      srt   = srt   || !!p.buttons[3]?.pressed;
     }
     if (games.length && !launching) {
       repeat('left', left, now, () => select(index - 1));
@@ -257,7 +305,9 @@
       if (go && !held.go) launch();
     }
     if (sel && !held.sel) cycleOverride();
+    if (srt && !held.srt) { lastInput = 'pad'; applyGlyph(); cycleSort(); }
     held.sel = sel;
+    held.srt = srt;
     held.go = go;
     requestAnimationFrame(poll);
   }
@@ -266,14 +316,14 @@
      Note: Steam Input often presents ANY pad as a virtual Xbox 360 controller. If the icon is wrong,
      press Select/Share to cycle it manually, or load the page once with ?pad=ps (or xbox, switch, auto). */
   const PADS = {
-    ps:      { name: 'PlayStation', confirm: '\u2715', alt: 'Share' },
-    xbox:    { name: 'Xbox',        confirm: 'A',       alt: 'View' },
-    switch:  { name: 'Nintendo',    confirm: 'B',       alt: '\u2212' },
-    steam:   { name: 'Steam',       confirm: 'A',       alt: 'View' },
-    generic: { name: 'Gamepad',     confirm: 'A',       alt: 'Select' }
+    ps:      { name: 'PlayStation', confirm: '\u2715', alt: 'Share', top: '\u25b3' },
+    xbox:    { name: 'Xbox',        confirm: 'A',       alt: 'View', top: 'Y' },
+    switch:  { name: 'Nintendo',    confirm: 'B',       alt: '\u2212', top: 'X' },
+    steam:   { name: 'Steam',       confirm: 'A',       alt: 'View', top: 'Y' },
+    generic: { name: 'Gamepad',     confirm: 'A',       alt: 'Select', top: 'Y' }
   };
   const PAD_KEY = 'launcher:pad', OVR_KEY = 'launcher:padOverride';
-  let detected = 'generic', override = null, connected = false;
+  let detected = 'generic', override = null, connected = false, lastInput = 'key';
   try {
     detected = localStorage.getItem(PAD_KEY) || 'generic';
     const q = new URLSearchParams(location.search).get('pad');
@@ -297,6 +347,7 @@
     $('playGlyph').textContent = p.confirm;
     $('hintGlyph').textContent = p.confirm;
     $('swapKey').textContent = p.alt;
+    $('sortGlyph').textContent = connected && lastInput === 'pad' ? p.top : 'S';
     $('swapHint').hidden = !connected;
     document.body.classList.toggle('pad-on', connected);
     $('padText').textContent = connected
