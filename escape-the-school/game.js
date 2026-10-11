@@ -37,14 +37,15 @@
   // ---------------------------------------------------------------------------
   // Art
   const IMG = {};
-  const ART = ['girl1', 'girl2', 'teacher', 'teacher-back', 'janitor', 'cart', 'lockers', 'sleeper', 'student', 'door'];
+  const ART = ['girl1', 'girl2', 'girl1-seated', 'girl2-seated', 'teacher', 'teacher-back', 'janitor', 'cart', 'lockers', 'sleeper', 'student', 'door'];
   function loadImage(src) {
     return new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
   }
   const loading = Promise.all(ART.map((n) => loadImage(`assets/${n}.png`).then((i) => { IMG[n] = i; })));
 
-  let save = { sound: true };
+  let save = { sound: true, pad: 'auto' };
   try { const s = JSON.parse(localStorage.getItem('escape-school-v1')); if (s) save = { ...save, ...s }; } catch { /* none */ }
+  if (!['auto', 'xbox', 'ps', 'nintendo'].includes(save.pad)) save.pad = 'auto';
   function writeSave() { try { localStorage.setItem('escape-school-v1', JSON.stringify(save)); } catch { /* ignore */ } }
 
   // ---------------------------------------------------------------------------
@@ -62,12 +63,16 @@
   const keysDown = new Set();
   const keysHit = new Set();
   let device = 'keyboard'; // 'keyboard' | 'xbox' | 'ps' | 'nintendo' | 'deck'
+  let padId = '';           // the last controller used, shown in the menu
+  // Some setups hide the real controller (Steam Input turns everything into a
+  // virtual Xbox pad), so the menu lets you pick the button pictures yourself.
+  const PAD_STYLES = [['auto', 'Auto'], ['xbox', 'Xbox'], ['ps', 'PlayStation'], ['nintendo', 'Switch']];
   const held = {}, prevHeld = {};
   let moveX = 0, moveY = 0;
 
   function padFamily(id) {
     if (/054c|playstation|dualshock|dualsense|wireless controller/i.test(id)) return 'ps';
-    if (/057e|nintendo|switch|pro controller|joy-con/i.test(id)) return 'nintendo';
+    if (/057e|nintendo|switch|pro controller|joy-con|joycon/i.test(id)) return 'nintendo';
     if (/28de|valve|steam/i.test(id)) return 'deck';
     return 'xbox';
   }
@@ -100,7 +105,7 @@
       if (sx > 0.5) padHeld.right = true;
       if (sy < -0.5) padHeld.up = true;
       if (sy > 0.5) padHeld.down = true;
-      if (used) { device = padFamily(gp.id); unlockAudio(); }
+      if (used) { padId = gp.id; device = save.pad !== 'auto' ? save.pad : padFamily(gp.id); unlockAudio(); }
     }
     for (const a in KEYS) {
       prevHeld[a] = held[a];
@@ -417,6 +422,10 @@
   let paused = false, pauseSel = 0;
   let t = 0;            // seconds since the page started
   let hero = 'girl1';
+  // Which way each drawing already faces (1 right, -1 left), so walking flips
+  // them the right way round. The blond girl's feet point left.
+  const FACES = { girl1: 1, girl2: -1 };
+  const heroFlip = (face) => face !== FACES[hero];
   let pickSel = 0;
 
   // Fades to white and back, calling fn in the middle.
@@ -508,7 +517,6 @@
     drawSprite(c, IMG.teacher, 210, 690, 470, { bob: Math.abs(Math.sin(t * 1.3)) * 3 });
     drawSprite(c, IMG.girl1, 900, 680, 380, { tilt: Math.sin(t * 2) * 0.02 });
     drawSprite(c, IMG.girl2, 1080, 680, 360, { tilt: Math.sin(t * 2 + 1) * 0.02 });
-    c.font = font(30, 'normal'); c.fillText('by Mezzie', 640, 250);
     c.restore();
     drawPrompts(c, [['confirm', 'Start'], ['fullscreen', 'Fullscreen']], W / 2, 600, 'center', 40);
   }
@@ -526,16 +534,14 @@
     const cx = W / 2;
     c.save();
     c.font = font(64, 'normal'); c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillText('Pick your girl', cx - 60, 80);
+    c.fillText('Pick your girl', cx, 80);
     pickSketch.draw(c);
-    const xs = [cx - 260, cx + 20];
+    const xs = [cx - 170, cx + 170];
     xs.forEach((x, i) => {
       const sel = i === pickSel;
       if (sel) drawRing(c, x, 635, 130, 34, t);
       drawSprite(c, IMG[i ? 'girl2' : 'girl1'], x, 640, sel ? 450 : 410, { bob: sel ? Math.abs(Math.sin(t * 6)) * 8 : 0 });
     });
-    // The janitor stands on their right, like in her drawing.
-    drawSprite(c, IMG.janitor, cx + 300, 640, 380, { alpha: 0.9 });
     c.restore();
     drawPrompts(c, [['leftright', 'Choose'], ['confirm', 'Go to school']], W / 2, H - 34, 'center', 36);
   }
@@ -543,22 +549,26 @@
   pickSketch.line(400 - 120, 120, 900 - 120, 116, 5);
   function rebuildPickSketch() {
     pickSketch.strokes = []; pickSketch.r = rng(11);
-    pickSketch.line(W / 2 - 300, 122, W / 2 + 180, 118, 5);
+    pickSketch.line(W / 2 - 240, 122, W / 2 + 240, 118, 5);
   }
 
   // ---------------------------------------------------------------------------
   // The hallway, side on. One long hallway is used twice: walking to class at the
   // start, and running away from the teacher in the chase.
   const FLOOR = 640;           // where feet stand
-  const HALL_W = 3800;
+  const HALL_W = 4500;
   const DOOR_X = 700;          // the classroom door
-  const EXIT_X = 3520;         // locked doors at the end
+  const EXIT_X = 4220;         // locked doors at the end
   const JAN_HOME = 1450;       // the janitor mops here, facing the classroom
   const SPOTS = [              // hiding spots, all past the janitor
     { kind: 'cart', x: 1930, half: 150 },
-    { kind: 'lockers', x: 2560, half: 130 },
-    { kind: 'lockers', x: 3090, half: 130 },
+    { kind: 'closet', x: 2320, half: 95, label: 'Janitor' },
+    { kind: 'lockers', x: 2700, half: 130 },
+    { kind: 'room', x: 3100, half: 95, label: 'Room 10' },
+    { kind: 'lockers', x: 3480, half: 130 },
+    { kind: 'room', x: 3880, half: 95, label: 'Room 11' },
   ];
+  const isDoor = (s) => s.kind === 'closet' || s.kind === 'room';
   const H_GIRL = 330, H_TEACHER = 420, H_JANITOR = 380, H_LOCKERS = 440, H_CART = 250;
 
   const hallSketch = new Sketch(21);
@@ -596,14 +606,24 @@
     // Water fountain
     s.rect(960, 400, 110, 60, 4).line(975, 400, 985, 380, 3).line(985, 380, 1005, 382, 3).rect(990, 460, 30, 88, 3);
     // Windows
-    for (const wx of [1150, 2250]) {
+    for (const wx of [1150]) {
       s.rect(wx, 150, 260, 160, 5).line(wx + 130, 150, wx + 130, 310, 4).line(wx, 230, wx + 260, 230, 4);
       s.line(wx + 30, 175, wx + 70, 205, 2, '#888').line(wx + 160, 255, wx + 200, 285, 2, '#888');
     }
     // A clock
     s.circle(1760, 200, 42, 5).line(1760, 200, 1760, 172, 4).line(1760, 200, 1782, 210, 4);
     // Posters
-    s.rect(2900, 160, 140, 180, 4).text('READ!', 2970, 200, 30, INK).circle(2970, 270, 34, 3).line(2950, 270, 2990, 270, 3).line(2970, 236, 2970, 304, 3);
+    s.rect(4010, 160, 110, 150, 4).text('READ!', 4065, 195, 26, INK).circle(4065, 255, 28, 3).line(4045, 255, 4085, 255, 3).line(4065, 227, 4065, 283, 3);
+    // Closed doors you can hide behind: the janitor's closet and other classrooms
+    for (const d of SPOTS.filter(isDoor)) {
+      const x = d.x;
+      s.fill(x - 90, 180, 180, 392).rect(x - 90, 180, 180, 392, 6).rect(x - 78, 192, 156, 380, 3);
+      s.rect(x - 38, 222, 76, 92, 3.5).line(x + 52, 390, x + 66, 390, 7);
+      s.rect(x - 70, 120, 140, 44, 4).text(d.label, x, 143, d.label.length > 7 ? 24 : 26, INK);
+      if (d.kind === 'closet') { // a bucket by the closet door
+        s.poly([[x + 104, 500], [x + 156, 500], [x + 150, 572], [x + 110, 572]], true, 4).circle(x + 130, 488, 26, 3, INK, 12);
+      }
+    }
     s.rect(1600, 380, 120, 100, 4).text('No', 1660, 410, 26, INK).text('running', 1660, 446, 24, INK);
     // Locked doors at the end with an exit sign
     s.rect(EXIT_X - 130, 190, 130, 382, 6).rect(EXIT_X, 190, 130, 382, 6);
@@ -766,6 +786,8 @@
       if (s.kind === 'lockers') {
         drawSprite(c, IMG.lockers, s.x, FLOOR - 40, H_LOCKERS);
         if (P.hidden === s) drawPeekEyes(c, s.x + 60, FLOOR - 340);
+      } else if (isDoor(s)) {
+        if (P.hidden === s) drawPeekEyes(c, s.x, 268);
       } else {
         if (P.hidden === s) {
           // Crouched behind the cart with just the top of her head showing.
@@ -802,7 +824,7 @@
     if (!P.hidden) {
       const walking = Math.abs(P.vx) > 1;
       drawSprite(c, IMG[hero], P.x, FLOOR, H_GIRL, {
-        flip: P.face < 0, bob: walking ? Math.abs(Math.sin(P.walkT * 11)) * 10 : 0, tilt: walking ? Math.sin(P.walkT * 11) * 0.05 : 0,
+        flip: heroFlip(P.face), bob: walking ? Math.abs(Math.sin(P.walkT * 11)) * 10 : 0, tilt: walking ? Math.sin(P.walkT * 11) * 0.05 : 0,
       });
     }
 
@@ -813,7 +835,10 @@
         if (Math.abs(P.x - DOOR_X) < 90) drawHideTag(c, DOOR_X, FLOOR - H_GIRL - 70, 'Go in', t);
       } else if (chase.state === 'run' || chase.state === 'hidden') {
         const s = nearSpot();
-        if (s) drawHideTag(c, s.x + (s.kind === 'cart' ? -40 : 0), FLOOR - (s.kind === 'cart' ? H_CART : H_LOCKERS) - 110, P.hidden ? 'Come out' : 'Hide', t);
+        if (s) {
+          const top = s.kind === 'cart' ? FLOOR - H_CART : FLOOR - H_LOCKERS;
+          drawHideTag(c, s.x + (s.kind === 'cart' ? -40 : 0), isDoor(s) ? 360 : top - 110, P.hidden ? 'Come out' : 'Hide', t);
+        }
       }
     }
 
@@ -867,7 +892,7 @@
   const me = { x: 0, y: 0, face: 1, walkT: 0, seated: false, moving: false };
   const teach = { x: 0, y: 0, back: false, spin: 0, walkT: 0, moving: false };
   let cls = { phase: 'enter', timer: 0, asleep: false, writing: 0, prompt: false, tries: 0 };
-  const H_KID = 148, H_TEACH = 180, H_TEACH_BACK = 172;
+  const H_KID = 148, H_SEATED = 150, H_TEACH = 180, H_TEACH_BACK = 172;
 
   function layoutClass() {
     if (C.W === W) return;
@@ -875,20 +900,23 @@
     C.left = 70; C.right = W - 70; C.top = 170; C.bottom = 685;
     C.board = { x: 120, y: 34, w: 470, h: 100 };
     C.teacherHome = { x: 200, y: 300 };
-    C.teacherBoard = { x: 330, y: 230 };
+    C.teacherBoard = { x: 530, y: 230 };
     C.teacherDesk = { x: 290, y: 232, w: 190, h: 70 };
     const cx = Math.round((C.left + C.right) / 2 + 40);
     C.desks = [];
-    for (const y of [400, 575]) for (const dx of [-210, 0, 210]) C.desks.push({ x: cx + dx, y });
+    for (const y of [355, 525]) for (const dx of [-210, 0, 210]) C.desks.push({ x: cx + dx, y });
     C.student = C.desks[1];
     C.seat = C.desks[2];
     C.door = { x: C.right, y: 525, half: 70 };
     C.sketch = buildClassSketch();
   }
 
-  function deskStrokes(s, x, y) {
-    // Chair behind (above) the desk, desk top, front, legs.
-    s.fill(x - 26, y - 64, 52, 40).rect(x - 24, y - 66, 48, 16, 3).rect(x - 26, y - 48, 52, 24, 3);
+  // Desks face the chalkboard, so you see each chair from behind, below its
+  // desk, like in her drawing of the two girls sitting down.
+  const SEAT_Y = 108; // how far below a desk's middle a seated kid's feet are
+  function chairStrokes(s, x, y) {
+    s.fill(x - 26, y + 46, 52, 34).rect(x - 26, y + 46, 52, 34, 3.5).line(x - 26, y + 62, x + 26, y + 62, 2.5);
+    s.line(x - 22, y + 80, x - 22, y + 104, 3.5).line(x + 22, y + 80, x + 22, y + 104, 3.5);
   }
   function buildClassSketch() {
     const s = new Sketch(33);
@@ -945,7 +973,7 @@
   const chairCache = new Map();
   function drawChair(c, x, y) {
     const k = x + ',' + y;
-    if (!chairCache.has(k)) { const s = new Sketch(x + y * 3); deskStrokes(s, x, y); chairCache.set(k, s); }
+    if (!chairCache.has(k)) { const s = new Sketch(x + y * 3); chairStrokes(s, x, y); chairCache.set(k, s); }
     chairCache.get(k).draw(c);
   }
 
@@ -971,15 +999,16 @@
       : ['Nice try. Back in your seat, young lady.', 'Now, where was I...'];
     say('Teacher', lines, startWriting);
   }
-  function sitDown() { me.seated = true; me.x = C.seat.x; me.y = C.seat.y + 14; me.face = 1; }
-  function standUp() { me.seated = false; me.x = C.seat.x + 92; me.y = C.seat.y + 20; me.face = 1; }
+  function sitDown() { me.seated = true; me.x = C.seat.x; me.y = C.seat.y + SEAT_Y; me.face = 1; }
+  function standUp() { me.seated = false; me.x = C.seat.x + 92; me.y = C.seat.y + SEAT_Y; me.face = 1; }
+  const seatDist = () => Math.hypot(me.x - C.seat.x, me.y - (C.seat.y + 80));
   function startWriting() {
     cls.phase = 'turning'; cls.timer = 0;
   }
 
   function blocked(x, y) {
     if (x < C.left + 22 || x > C.right - 22 || y < C.top + 50 || y > C.bottom - 8) return true;
-    const boxes = C.desks.map((d) => [d.x - 56, d.y - 70, 112, 116]);
+    const boxes = C.desks.map((d) => [d.x - 56, d.y - 30, 112, SEAT_Y + 4]);
     const td = C.teacherDesk; boxes.push([td.x - 10, td.y - 30, td.w + 20, td.h + 40]);
     boxes.push([C.left, 500, 80, 180]); // bookshelf
     boxes.push([teach.x - 30, teach.y - 30, 60, 40]);
@@ -1004,7 +1033,7 @@
         const was = Math.floor(me.walkT * 4); me.walkT += dt; if (Math.floor(me.walkT * 4) !== was) sfx.step();
       }
     }
-    const nearSeat = !me.seated && Math.hypot(me.x - C.seat.x, me.y - (C.seat.y + 14)) < 120;
+    const nearSeat = !me.seated && seatDist() < 130;
 
     switch (cls.phase) {
       case 'enter':
@@ -1074,16 +1103,18 @@
     // Things sorted by how far down the screen they are, so nearer ones overlap.
     const items = [];
     for (const d of C.desks) {
-      if (d === C.student) items.push([d.y + 40, () => drawSprite(c, IMG[cls.asleep ? 'sleeper' : 'student'], d.x - (cls.asleep ? 16 : 0), d.y + 50, cls.asleep ? 178 : 150)]);
+      if (d === C.student) items.push([d.y + SEAT_Y, () => drawSprite(c, IMG[cls.asleep ? 'sleeper' : 'student'], d.x - (cls.asleep ? 16 : 0), d.y + SEAT_Y, cls.asleep ? 178 : 150)]);
       else {
-        items.push([d.y - 30, () => drawChair(c, d.x, d.y)]);
-        items.push([d.y + 30, () => drawDesk(c, d.x, d.y)]);
+        items.push([d.y, () => drawDesk(c, d.x, d.y)]);
+        if (!(d === C.seat && me.seated)) items.push([d.y + SEAT_Y - 2, () => drawChair(c, d.x, d.y)]);
       }
     }
     // Me
-    items.push([me.seated ? me.y - 1 : me.y, () => {
+    items.push([me.y, () => {
+      // Sitting: her drawing of the girl on her chair, from behind.
+      if (me.seated) { drawSprite(c, IMG[hero + '-seated'], me.x, me.y, H_SEATED); return; }
       drawSprite(c, IMG[hero], me.x, me.y, H_KID, {
-        flip: me.face < 0, bob: me.moving ? Math.abs(Math.sin(me.walkT * 11)) * 5 : 0, tilt: me.moving ? Math.sin(me.walkT * 11) * 0.05 : 0,
+        flip: heroFlip(me.face), bob: me.moving ? Math.abs(Math.sin(me.walkT * 11)) * 5 : 0, tilt: me.moving ? Math.sin(me.walkT * 11) * 0.05 : 0,
       });
     }]);
     // Teacher
@@ -1097,17 +1128,17 @@
     items.sort((a, z) => a[0] - z[0]);
     for (const [, f] of items) f();
 
-    if (cls.asleep) drawZzz(c, C.student.x + 30, C.student.y - 105);
+    if (cls.asleep) drawZzz(c, C.student.x + 30, C.student.y - 40);
 
     // Rings and prompts
     if (!dialog && !fadeDir) {
       if (cls.phase === 'enter') {
-        drawRing(c, C.seat.x, C.seat.y - 10, 80, 66, t);
-        if (Math.hypot(me.x - C.seat.x, me.y - (C.seat.y + 14)) < 120) drawHideTag(c, C.seat.x, C.seat.y - 150, 'Sit', t);
+        drawRing(c, C.seat.x, C.seat.y + 60, 76, 70, t);
+        if (seatDist() < 130) drawHideTag(c, C.seat.x, C.seat.y - 90, 'Sit', t);
       }
       if (cls.phase === 'escape' && cls.prompt) {
         drawRing(c, C.door.x - 10, C.door.y, 60, 95, t);
-        if (me.seated) drawHideTag(c, me.x, me.y - 190, 'Stand up', t);
+        if (me.seated) drawHideTag(c, me.x, me.y - 230, 'Stand up', t);
       }
       if (cls.phase === 'spin' || cls.phase === 'question') drawMark(c, teach.x, teach.y - H_TEACH - 30, '!');
     }
@@ -1117,19 +1148,25 @@
     }
   }
   // "1000 TESTS" and tally marks, chalked a stroke at a time.
+  const BOARD_TALLIES = 50; // tally marks that fit on the board in one row
   function drawChalk(c, b, time) {
     if (time <= 0) return;
     c.save();
     c.beginPath(); c.rect(b.x + 10, b.y + 10, b.w - 20, b.h - 20); c.clip();
-    c.font = font(40, 'normal'); c.fillStyle = '#444'; c.textBaseline = 'middle';
+    c.font = font(34, 'normal'); c.fillStyle = '#444'; c.textBaseline = 'middle'; c.textAlign = 'left';
     const title = '1000 TESTS';
+    const tw = c.measureText(title).width, maxW = b.w - 50;
     const n = Math.min(title.length, Math.floor(time * 3));
-    c.fillText(title.slice(0, n), b.x + 22, b.y + 38);
-    const tallies = Math.max(0, Math.floor((time - 4) * 3));
+    c.save(); c.translate(b.x + 24, b.y + 34); if (tw > maxW) c.scale(maxW / tw, 1);
+    c.fillText(title.slice(0, n), 0, 0); c.restore();
+    // Tally marks, one row; when it's full he wipes them and starts a new row.
+    const total = Math.max(0, Math.floor((time - 4) * 3));
+    const tallies = total % (BOARD_TALLIES + 6); // a short pause on a full board
     c.strokeStyle = '#444'; c.lineWidth = 3; c.lineCap = 'round';
-    for (let i = 0; i < Math.min(tallies, 120); i++) {
+    const gap = (b.w - 60) / (BOARD_TALLIES / 5);
+    for (let i = 0; i < Math.min(tallies, BOARD_TALLIES); i++) {
       const group = Math.floor(i / 5), k = i % 5;
-      const gx = b.x + 26 + (group % 12) * 36, gy = b.y + 68 + Math.floor(group / 12) * 30;
+      const gx = b.x + 28 + group * gap, gy = b.y + 70;
       c.beginPath();
       if (k < 4) { c.moveTo(gx + k * 6, gy - 12); c.lineTo(gx + k * 6 + 1, gy + 10); }
       else { c.moveTo(gx - 4, gy + 6); c.lineTo(gx + 24, gy - 8); }
@@ -1215,6 +1252,11 @@
       ['Keep playing', () => { paused = false; }],
       [document.fullscreenElement ? 'Leave fullscreen' : 'Fullscreen', toggleFullscreen],
       [`Sound: ${save.sound ? 'on' : 'off'}`, () => { save.sound = !save.sound; writeSave(); }],
+      [`Buttons: ${PAD_STYLES.find((p) => p[0] === save.pad)[1]}`, () => {
+        const i = PAD_STYLES.findIndex((p) => p[0] === save.pad);
+        save.pad = PAD_STYLES[(i + 1) % PAD_STYLES.length][0]; writeSave();
+        if (device !== 'keyboard') device = save.pad !== 'auto' ? save.pad : padFamily(padId);
+      }],
       ['Start over', () => { paused = false; mode = 'title'; dialog = null; barks.length = 0; }],
       ['All games', () => { location.href = '/'; }],
     ];
@@ -1231,7 +1273,11 @@
     c.fillStyle = 'rgba(255,255,255,.85)'; c.fillRect(0, 0, W, H);
     c.font = font(64, 'normal'); c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText('Paused', W / 2, 110);
-    drawMenu(c, pauseItems().map((i) => i[0]), pauseSel, W / 2, 230);
+    drawMenu(c, pauseItems().map((i) => i[0]), pauseSel, W / 2, 210);
+    if (padId) {
+      c.font = font(18, 'normal'); c.fillStyle = '#666';
+      c.fillText(`Controller: ${padId.slice(0, 90)}`, W / 2, H - 30);
+    }
     c.restore();
   }
 
