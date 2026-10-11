@@ -62,7 +62,7 @@
 
   const keysDown = new Set();
   const keysHit = new Set();
-  let device = 'keyboard'; // 'keyboard' | 'xbox' | 'ps' | 'nintendo' | 'deck'
+  let device = 'keyboard'; // 'keyboard' | 'touch' | 'xbox' | 'ps' | 'nintendo' | 'deck'
   let padId = '';           // the last controller used, shown in the menu
   // Some setups hide the real controller (Steam Input turns everything into a
   // virtual Xbox pad), so the menu lets you pick the button pictures yourself.
@@ -87,8 +87,17 @@
   addEventListener('keyup', (e) => keysDown.delete(e.code));
   addEventListener('blur', () => keysDown.clear());
 
-  let tapped = false;
-  canvas.addEventListener('pointerdown', () => { tapped = true; unlockAudio(); });
+  // Touch (and mouse): taps are kept in game coordinates and handled by each
+  // screen: tap a spot to walk there, tap a thing to use it, tap a menu item.
+  let tap = null, tapNext = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    const r = canvas.getBoundingClientRect();
+    tapNext = { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale };
+    if (e.pointerType !== 'mouse') device = 'touch';
+    unlockAudio();
+  });
+  // Set for one frame when a tap-walk arrives at something to use (a door, a seat, a hiding spot).
+  let actNow = false;
 
   function pollInput() {
     const padHeld = {};
@@ -113,12 +122,20 @@
     }
     // Keys that went down and up again within one frame still count as a press.
     for (const a in KEYS) if (KEYS[a].some((k) => keysHit.has(k))) prevHeld[a] = false, held[a] = true;
-    if (tapped) { prevHeld.confirm = false; held.confirm = true; tapped = false; }
+    tap = tapNext; tapNext = null; actNow = false;
     moveX = Math.max(-1, Math.min(1, ax + (held.right ? 1 : 0) - (held.left ? 1 : 0)));
     moveY = Math.max(-1, Math.min(1, ay + (held.down ? 1 : 0) - (held.up ? 1 : 0)));
     keysHit.clear();
   }
   const hit = (a) => held[a] && !prevHeld[a];
+  const use = () => hit('confirm') || actNow;
+  const tapIn = (x, y, w, h) => tap && tap.x >= x && tap.x <= x + w && tap.y >= y && tap.y <= y + h;
+  // Which row of a drawMenu() list was tapped, or -1.
+  function menuTap(y0, n) {
+    if (!tap) return -1;
+    for (let i = 0; i < n; i++) if (Math.abs(tap.y - (y0 + i * 70)) < 34) return i;
+    return -1;
+  }
 
   function toggleFullscreen() {
     try {
@@ -321,6 +338,12 @@
     c.save();
     c.textAlign = 'center'; c.textBaseline = 'middle';
     const r = size / 2;
+    if (device === 'touch') {
+      c.strokeStyle = INK; c.fillStyle = '#fff'; c.lineWidth = 3;
+      c.beginPath(); c.arc(x + r, y, r - 2, 0, 7); c.fill(); c.stroke();
+      c.fillStyle = INK; c.beginPath(); c.arc(x + r, y, r * 0.3, 0, 7); c.fill();
+      c.restore(); return size;
+    }
     if (device === 'keyboard') {
       if (action === 'move') {
         let w = 0;
@@ -449,7 +472,15 @@
     if (d.choices && full) {
       if (hit('up') || hit('down')) { d.sel = 1 - d.sel; sfx.move(); }
     }
-    if (hit('confirm')) {
+    let ok = hit('confirm');
+    if (tap) {
+      if (d.choices && full) {
+        // Tap an answer to pick it.
+        const by = H - 250 - 20;
+        d.choices.forEach((ch, i) => { if (tap.y > by + 108 + i * 58 && tap.y < by + 166 + i * 58) { d.sel = i; ok = true; } });
+      } else ok = true;
+    }
+    if (ok) {
       if (!full) { d.shown = text.length; return; }
       if (d.page < d.pages.length - 1) { d.page++; d.shown = 0; sfx.blip(); return; }
       dialog = null; sfx.ok();
@@ -501,7 +532,7 @@
   // Title and character pick
   function updateTitle() {
     if (hit('fullscreen')) toggleFullscreen();
-    if (hit('confirm')) { sfx.ok(); mode = 'pick'; }
+    if (hit('confirm') || tap) { sfx.ok(); mode = 'pick'; }
   }
   const titleSketch = new Sketch(7);
   {
@@ -524,7 +555,9 @@
   function updatePick() {
     if (hit('left') || hit('right')) { pickSel = 1 - pickSel; sfx.move(); }
     if (hit('back')) mode = 'title';
-    if (hit('confirm')) {
+    let go = hit('confirm');
+    if (tap) [W / 2 - 170, W / 2 + 170].forEach((x, i) => { if (Math.abs(tap.x - x) < 170) { pickSel = i; go = true; } });
+    if (go) {
       hero = pickSel ? 'girl2' : 'girl1';
       sfx.ok();
       fadeTo(startHall);
@@ -638,7 +671,7 @@
   }
 
   // Everyone in the hallway
-  const P = { x: 200, vx: 0, face: 1, walkT: 0, hidden: null, frozen: false };
+  const P = { x: 200, vx: 0, face: 1, walkT: 0, hidden: null, frozen: false, target: null };
   const teacherH = { x: DOOR_X, face: 1, state: 'off', timer: 0, alpha: 0, walkT: 0 };
   // The janitor always faces the classroom. He mostly looks down at his mop, but
   // every few seconds he looks up (with a "?" first as a warning), and if you're
@@ -650,14 +683,14 @@
 
   function startHall() {
     mode = 'hall'; hallMode = 'walk';
-    P.x = 180; P.face = 1; P.hidden = null; P.frozen = false;
+    P.x = 180; P.face = 1; P.hidden = null; P.frozen = false; P.target = null;
     jan.x = JAN_HOME; jan.looking = false; jan.talked = false; jan.saw = false; jan.warn = 0;
     teacherH.state = 'off'; teacherH.alpha = 0;
     camX = 0; barks.length = 0; dialog = null;
   }
   function startChase() {
     mode = 'hall'; hallMode = 'chase';
-    P.x = DOOR_X + 150; P.face = 1; P.hidden = null; P.frozen = false;
+    P.x = DOOR_X + 150; P.face = 1; P.hidden = null; P.frozen = false; P.target = null;
     jan.x = JAN_HOME; jan.looking = false; jan.next = 3.4; jan.warn = 0; jan.saw = false;
     teacherH.x = DOOR_X; teacherH.face = 1; teacherH.state = 'coming'; teacherH.timer = 1.9; teacherH.alpha = 0;
     chase = { state: 'run', timer: 0 };
@@ -677,11 +710,31 @@
     return dx < -10 && dx > -JAN_SIGHT;
   }
 
+  // Where a tap in the hallway sends you, and whether to use what's there.
+  function hallTap() {
+    const wx = tap.x + camX;
+    if (P.hidden) { actNow = true; return; } // tap anywhere to come out
+    const chasing = hallMode === 'chase';
+    const spot = chasing && SPOTS.find((sp) => Math.abs(wx - sp.x) < sp.half);
+    if (spot) P.target = { x: spot.x, act: true };
+    else if (!chasing && Math.abs(wx - DOOR_X) < 110) P.target = { x: DOOR_X, act: true };
+    else if (wx > EXIT_X - 260) P.target = { x: EXIT_X - 150, act: true };
+    else P.target = { x: clamp(wx, 90, EXIT_X - 150), act: false };
+  }
+
   function updateHall(dt) {
     const speed = 340;
+    if (tap && !P.frozen && !dialog) hallTap();
+    let mx = moveX;
+    if (Math.abs(mx) > 0.1 || P.hidden || P.frozen) P.target = null;
+    else if (P.target) {
+      const dx = P.target.x - P.x;
+      if (Math.abs(dx) < 8) { if (P.target.act) actNow = true; P.target = null; }
+      else mx = Math.sign(dx) * Math.min(1, Math.abs(dx) / 30);
+    }
     if (!P.frozen && !dialog && !P.hidden) {
-      P.vx = moveX * speed;
-      if (Math.abs(moveX) > 0.1) P.face = Math.sign(moveX);
+      P.vx = mx * speed;
+      if (Math.abs(mx) > 0.1) P.face = Math.sign(mx);
     } else P.vx = 0;
     const before = P.x;
     P.x = clamp(P.x + P.vx * dt, 90, EXIT_X - 150);
@@ -697,9 +750,9 @@
 
     if (hallMode === 'walk') {
       if (!dialog) {
-        if (Math.abs(P.x - DOOR_X) < 90 && hit('confirm')) { sfx.door(); fadeTo(startClass); }
+        if (Math.abs(P.x - DOOR_X) < 90 && use()) { sfx.door(); fadeTo(startClass); }
         if (!jan.talked && Math.abs(P.x - jan.x) < 220) { jan.talked = true; bark('jan', 'Shouldn\'t you be in class?', 2.6); }
-        if (P.x >= EXIT_X - 160 && hit('confirm')) { sfx.locked(); bark('you', 'It\'s locked. It\'s not home time yet!'); }
+        if (P.x >= EXIT_X - 160 && use()) { sfx.locked(); bark('you', 'It\'s locked. It\'s not home time yet!'); }
       }
       return;
     }
@@ -717,7 +770,7 @@
 
       // Hiding
       const spot = nearSpot();
-      if (hit('confirm')) {
+      if (use()) {
         if (P.hidden) { P.hidden = null; sfx.hide(); }
         else if (spot) { P.hidden = spot; P.x = spot.x; sfx.hide(); }
         else if (P.x >= EXIT_X - 170) { sfx.locked(); bark('you', 'Locked! I need to hide!'); }
@@ -889,7 +942,7 @@
   // ---------------------------------------------------------------------------
   // The classroom, seen from above like Zelda.
   const C = {};          // layout, rebuilt when the screen width changes
-  const me = { x: 0, y: 0, face: 1, walkT: 0, seated: false, moving: false };
+  const me = { x: 0, y: 0, face: 1, walkT: 0, seated: false, moving: false, path: null, act: null, stuck: 0 };
   const teach = { x: 0, y: 0, back: false, spin: 0, walkT: 0, moving: false };
   let cls = { phase: 'enter', timer: 0, asleep: false, writing: 0, prompt: false, tries: 0 };
   const H_KID = 148, H_SEATED = 150, H_TEACH = 180, H_TEACH_BACK = 172;
@@ -999,7 +1052,7 @@
       : ['Nice try. Back in your seat, young lady.', 'Now, where was I...'];
     say('Teacher', lines, startWriting);
   }
-  function sitDown() { me.seated = true; me.x = C.seat.x; me.y = C.seat.y + SEAT_Y; me.face = 1; }
+  function sitDown() { me.path = null; me.seated = true; me.x = C.seat.x; me.y = C.seat.y + SEAT_Y; me.face = 1; }
   function standUp() { me.seated = false; me.x = C.seat.x + 92; me.y = C.seat.y + SEAT_Y; me.face = 1; }
   const seatDist = () => Math.hypot(me.x - C.seat.x, me.y - (C.seat.y + 80));
   function startWriting() {
@@ -1016,19 +1069,86 @@
     return false;
   }
 
+  // Finds a way around the desks to a tapped spot (A* on a 20px grid).
+  function findPath(tx, ty) {
+    const G = 20, x0 = C.left, y0 = C.top, cols = Math.ceil((C.right - x0) / G), rows = Math.ceil((C.bottom - y0) / G);
+    const cx = (i) => x0 + i * G + G / 2, cy = (j) => y0 + j * G + G / 2;
+    const ok = [];
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) ok[j * cols + i] = !blocked(cx(i), cy(j));
+    const cellOf = (x, y) => [clamp(Math.floor((x - x0) / G), 0, cols - 1), clamp(Math.floor((y - y0) / G), 0, rows - 1)];
+    const [si, sj] = cellOf(me.x, me.y);
+    // The nearest open cell to the tap (it might be on a desk).
+    let goal = -1, best = Infinity;
+    for (let k = 0; k < ok.length; k++) if (ok[k]) {
+      const d = Math.hypot(cx(k % cols) - tx, cy(Math.floor(k / cols)) - ty);
+      if (d < best) { best = d; goal = k; }
+    }
+    if (goal < 0) return null;
+    const start = sj * cols + si, gx = goal % cols, gy = Math.floor(goal / cols);
+    const g = new Map([[start, 0]]), from = new Map(), open = [start], closed = new Set();
+    const h = (k) => Math.hypot(k % cols - gx, Math.floor(k / cols) - gy);
+    while (open.length) {
+      let bi = 0;
+      for (let i = 1; i < open.length; i++) if (g.get(open[i]) + h(open[i]) < g.get(open[bi]) + h(open[bi])) bi = i;
+      const k = open.splice(bi, 1)[0];
+      if (k === goal) break;
+      closed.add(k);
+      const ki = k % cols, kj = Math.floor(k / cols);
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const ni = ki + di, nj = kj + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const n = nj * cols + ni;
+        if (!ok[n] || closed.has(n)) continue;
+        if (di && dj && (!ok[kj * cols + ni] || !ok[nj * cols + ki])) continue; // no cutting corners
+        const ng = g.get(k) + (di && dj ? 1.414 : 1);
+        if (ng < (g.has(n) ? g.get(n) : Infinity)) { g.set(n, ng); from.set(n, k); if (!open.includes(n)) open.push(n); }
+      }
+    }
+    if (!from.has(goal) && goal !== start) return null;
+    const path = [];
+    for (let k = goal; k !== start; k = from.get(k)) path.unshift([cx(k % cols), cy(Math.floor(k / cols))]);
+    if (!blocked(tx, ty)) path.push([tx, ty]);
+    return path;
+  }
+  function classTap() {
+    if (me.seated) {
+      if (cls.phase !== 'escape') return;
+      standUp(); sfx.move();
+    }
+    const chairX = C.seat.x, chairY = C.seat.y + 70;
+    if (cls.phase === 'enter' && Math.hypot(tap.x - chairX, tap.y - chairY) < 100) {
+      me.path = findPath(C.seat.x + 92, C.seat.y + 80); me.act = 'sit';
+    } else { me.path = findPath(tap.x, tap.y); me.act = null; }
+    me.stuck = 0;
+  }
+
   function updateClass(dt) {
     layoutClass();
     cls.timer += dt;
+    if (tap && !dialog && ['enter', 'escape', 'writing'].includes(cls.phase)) classTap();
     const free = !dialog && !me.seated && ['enter', 'escape', 'writing'].includes(cls.phase);
     me.moving = false;
+    let mx = moveX, my = moveY;
+    if (Math.hypot(mx, my) > 0.15 || !free) me.path = null;
+    else if (me.path) {
+      const [wx, wy] = me.path[0], d = Math.hypot(wx - me.x, wy - me.y);
+      if (d < 6) {
+        me.path.shift();
+        if (!me.path.length) { me.path = null; if (me.act === 'sit') actNow = true; }
+      } else { mx = (wx - me.x) / d * Math.min(1, d / 20); my = (wy - me.y) / d * Math.min(1, d / 20); }
+    }
     if (free) {
       const sp = 250;
-      const len = Math.hypot(moveX, moveY);
+      const len = Math.hypot(mx, my);
       if (len > 0.15) {
-        const nx = me.x + moveX / Math.max(1, len) * sp * dt, ny = me.y + moveY / Math.max(1, len) * sp * dt;
+        const bx = me.x, by = me.y;
+        const nx = me.x + mx / Math.max(1, len) * sp * dt, ny = me.y + my / Math.max(1, len) * sp * dt;
         if (!blocked(nx, me.y)) me.x = nx;
         if (!blocked(me.x, ny)) me.y = ny;
-        if (Math.abs(moveX) > 0.2) me.face = Math.sign(moveX);
+        // Give up on a tap-walk that's stuck against something.
+        if (me.path && Math.hypot(me.x - bx, me.y - by) < 0.5) { me.stuck += dt; if (me.stuck > 0.4) me.path = null; } else me.stuck = 0;
+        if (Math.abs(mx) > 0.2) me.face = Math.sign(mx);
         me.moving = true;
         const was = Math.floor(me.walkT * 4); me.walkT += dt; if (Math.floor(me.walkT * 4) !== was) sfx.step();
       }
@@ -1037,7 +1157,7 @@
 
     switch (cls.phase) {
       case 'enter':
-        if (nearSeat && hit('confirm')) {
+        if (nearSeat && use()) {
           sitDown(); sfx.ok();
           cls.phase = 'talk';
           setTimeout(() => say('Teacher', [
@@ -1217,7 +1337,9 @@
   function updateWon() {
     if (hit('up')) { wonSel = (wonSel + WON_ITEMS.length - 1) % WON_ITEMS.length; sfx.move(); }
     if (hit('down')) { wonSel = (wonSel + 1) % WON_ITEMS.length; sfx.move(); }
-    if (hit('confirm')) { sfx.ok(); WON_ITEMS[wonSel][1](); }
+    const tapped = menuTap(360, WON_ITEMS.length);
+    if (tapped >= 0) wonSel = tapped;
+    if (hit('confirm') || tapped >= 0) { sfx.ok(); WON_ITEMS[wonSel][1](); }
   }
   function drawWon(c) {
     c.save();
@@ -1265,8 +1387,18 @@
     const items = pauseItems();
     if (hit('up')) { pauseSel = (pauseSel + items.length - 1) % items.length; sfx.move(); }
     if (hit('down')) { pauseSel = (pauseSel + 1) % items.length; sfx.move(); }
-    if (hit('confirm')) { sfx.blip(); items[pauseSel][1](); }
+    const tapped = menuTap(210, items.length);
+    if (tapped >= 0) pauseSel = tapped;
+    if (hit('confirm') || tapped >= 0) { sfx.blip(); items[pauseSel][1](); }
     else if (hit('back') || hit('pause')) paused = false;
+  }
+  // A menu button in the corner for touch screens.
+  function drawPauseButton(c) {
+    c.save();
+    c.fillStyle = '#fff'; c.strokeStyle = INK; c.lineWidth = 4;
+    roundRect(c, W - 72, 14, 56, 56, 14); c.fill(); c.stroke();
+    c.fillStyle = INK; c.fillRect(W - 54, 30, 7, 24); c.fillRect(W - 41, 30, 7, 24);
+    c.restore();
   }
   function drawPause(c) {
     c.save();
@@ -1291,8 +1423,10 @@
     for (let i = barks.length - 1; i >= 0; i--) { barks[i].t += dt; if (barks[i].t > barks[i].dur) barks.splice(i, 1); }
     if (fadeDir > 0) return;
     if (paused) { updatePause(); return; }
-    if (hit('pause') && ['hall', 'class'].includes(mode) && !dialog) { paused = true; pauseSel = 0; sfx.blip(); return; }
-    if (dialog) { updateDialog(dt); if (mode === 'class') updateClass(dt); return; }
+    const pauseTap = tapIn(W - 84, 0, 84, 84) && ['hall', 'class'].includes(mode);
+    if ((hit('pause') || pauseTap) && ['hall', 'class'].includes(mode) && !dialog) { paused = true; pauseSel = 0; sfx.blip(); return; }
+    if (pauseTap) tap = null;
+    if (dialog) { updateDialog(dt); tap = null; if (mode === 'class') updateClass(dt); return; }
     if (mode === 'title') updateTitle();
     else if (mode === 'pick') updatePick();
     else if (mode === 'hall') updateHall(dt);
@@ -1312,14 +1446,15 @@
     else if (mode === 'pick') { if (pickW !== W) { rebuildPickSketch(); pickW = W; } drawPick(ctx); }
     else if (mode === 'hall') {
       drawHall(ctx);
-      if (!dialog && !paused) {
+      if (!dialog && !paused && device !== 'touch') {
         const list = hallMode === 'walk' ? [['leftright', 'Walk'], ['pause', 'Menu']] : [['leftright', 'Run'], ['confirm', 'Hide'], ['pause', 'Menu']];
         drawPrompts(ctx, list, W - 24, H - 30, 'right', 30);
       }
     } else if (mode === 'class') {
       drawClass(ctx);
-      if (!dialog && !paused && (cls.phase === 'enter' || (cls.phase === 'escape' && !me.seated))) drawPrompts(ctx, [['move', 'Walk'], ['pause', 'Menu']], W - 24, H - 30, 'right', 30);
+      if (!dialog && !paused && device !== 'touch' && (cls.phase === 'enter' || (cls.phase === 'escape' && !me.seated))) drawPrompts(ctx, [['move', 'Walk'], ['pause', 'Menu']], W - 24, H - 30, 'right', 30);
     } else if (mode === 'won') drawWon(ctx);
+    if (device === 'touch' && ['hall', 'class'].includes(mode) && !paused) drawPauseButton(ctx);
     drawBanner(ctx);
     if (dialog) drawDialog(ctx);
     if (paused) drawPause(ctx);

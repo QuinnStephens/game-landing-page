@@ -22,6 +22,8 @@ The button pictures on screen change to match whatever you last used: keyboard, 
 
 If the button pictures don't match your controller (Steam Input can make every controller look like an Xbox one), pick Xbox, PlayStation or Switch under "Buttons" in the menu. The menu also shows the name the browser gives the controller.
 
+On a touch screen (or with a mouse), tap where you want to go: tap the classroom door to go in, tap the empty seat to sit, tap a hiding spot to run there and hide, and tap anywhere to come back out. Tap an answer to pick it, and the button in the top corner opens the menu.
+
 Hold Select + Start to go back to the launcher.
 
 ## Art
