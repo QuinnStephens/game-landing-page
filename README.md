@@ -18,5 +18,8 @@ Everything is static with no build step (Cloudflare Pages: no build command, out
 1. Make a new folder with the game's `index.html` in it. Use relative paths for its files (`assets/x.png`, not `/assets/x.png`).
 2. Add `<script src="../back-to-launcher.js"></script>` to its page, so holding Select + Start (or pressing Escape) goes back to the launcher. Add `data-no-escape` to that tag if the game uses Escape itself.
 3. Add an entry to `games.json` with a `title`, `tagline`, `url` (`/folder-name/`) and `image` (a 16:9 picture in `images/`).
+   Also give it `added` and `updated` dates (like `2026-10-11T18:44`), which the launcher's "Newest" and "Recently updated" sorts use. When you change a game, bump its `updated` date.
+
+The launcher's order in `games.json` is the "Featured" sort. Players can switch to A to Z, Recently updated or Newest with the Sort button, the S key or the top face button on a controller, and the choice is remembered.
 
 Each game's folder has its own README for how that game works. The games came from their own repos with `git subtree add`, so `git log -- <folder>` shows their full history.
