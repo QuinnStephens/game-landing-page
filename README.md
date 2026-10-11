@@ -9,6 +9,7 @@ One Cloudflare Pages site for all the games. The root `index.html` is the launch
 | In My Mom's Tummy | `in-my-moms-tummy/` |
 | Jojo Finds Momo | `jojo-finds-momo/` |
 | Photo Taker | `photo-taker/` |
+| Escape the School | `escape-the-school/` |
 
 Everything is static with no build step (Cloudflare Pages: no build command, output directory `/`). To try it locally, serve the repo root, e.g. `python3 -m http.server`, and open http://localhost:8000.
 

@@ -1,5 +1,11 @@
 [
   {
+    "title": "Escape the School",
+    "tagline": "1000 tests? No thank you.",
+    "url": "/escape-the-school/",
+    "image": "images/escape-the-school.png"
+  },
+  {
     "title": "Valley of the Omen: Return (Dev)",
     "tagline": "A woman on a mission. A valley swarming with cursed monsters. A boomerang.",
     "url": "https://omen.quinnstephens.com",
