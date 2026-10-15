@@ -64,6 +64,7 @@
   const TRAYS = [
     { id: 'items', name: 'Toys' },
     { id: 'furniture', name: 'Furniture' },
+    { id: 'people', name: 'People' },
   ];
 
   // Each place: its outside drawing in the town, how wide its inside is, and what's there to start with
@@ -87,13 +88,230 @@
       i.src = `../public/img/creative/${name}.png`;
     });
   }
-  const loading = Promise.all([...Object.keys(THINGS), ...PLACES.map((p) => p.id)].map(loadImage));
+  const loadingThings = Promise.all([...Object.keys(THINGS), ...PLACES.map((p) => p.id)].map(loadImage));
+
+  // ---------------------------------------------------------------------------
+  // Characters you make, with the same hand-drawn character creator as Explore (public/img/creator).
+  // They can be grown-ups or babies, bears or humans, and go in the People drawer to put in any place.
+
+  const CREATOR_ART = { w: 2224, h: 1668 };
+  const CREATOR_PAD = 40; // empty room around each cut-out piece, for its glow
+  const CREATOR_NECK = { x: 1010, y: 1165 }; // where the character stands in the drawing
+  const EXPLORE_CHARACTER_KEY = 'bear-kingdom-character-v1';
+  // The groups, in the order the explore creator has them, plus big or baby. Only humans change how they look
+  const CREATOR_GROUPS = [
+    { id: 'species', options: ['bear', 'human'] },
+    { id: 'age', options: ['big', 'baby'] },
+    { id: 'skin', options: ['skin-0', 'skin-1', 'skin-2'], humanOnly: true },
+    { id: 'hair', options: ['hair-black', 'hair-yellow', 'hair-purple', 'hair-blue'], optional: true, humanOnly: true },
+    { id: 'shirt', options: ['shirt-dress', 'shirt-blue', 'shirt-purple', 'shirt-pink', 'shirt-green', 'shirt-yellow'], optional: true, humanOnly: true },
+    { id: 'pants', options: ['pants-skirt-pink', 'pants-blue', 'pants-skirt-blue', 'pants-purple', 'pants-skirt-purple', 'pants-pink'], optional: true, humanOnly: true },
+    { id: 'go', options: ['go'] },
+  ];
+  const DEFAULT_LOOK = { species: 'human', age: 'big', skin: 'skin-0', hair: 'hair-purple', shirt: 'shirt-blue', pants: 'pants-blue' };
+  // Big or baby: placeholders in the empty top-left corner of her drawing, until she draws them
+  const AGE_BUTTONS = { big: { x: 25, y: 8, w: 165, h: 270 }, baby: { x: 200, y: 62, w: 165, h: 216 } };
+  // The character, in drawing units with the neck at 0,0, matching Explore (index.html)
+  const BODY_LINES = [
+    [0, 0, 0, 200], [-38, 200, 38, 200],
+    [0, 45, -135, 150], [0, 45, 135, 150],
+    [-35, 200, -42, 400], [35, 200, 42, 400],
+    [-42, 400, -105, 412], [42, 400, 105, 412],
+  ];
+  const CLOTHES_BOXES = {
+    pants: { x: -82, y: 178, w: 164, h: 225 },
+    skirt: { x: -125, y: 170, w: 250, h: 165 },
+    shirt: { x: -120, y: -8, w: 240, h: 225 },
+    dress: { x: -135, y: -8, w: 270, h: 345 },
+  };
+  const HUMAN_HEAD = { x: 76, y: -235, rx: 265, ry: 215, rotation: -0.38 };
+  const HAIR_BOXES = {
+    'hair-black': [{ cx: 0, cy: -0.78, w: 1.7, h: 0.8 }],
+    'hair-yellow': [{ cx: 0, cy: -1.18, w: 0.6, h: 0.5 }],
+    'hair-purple': [{ cx: -0.98, cy: 0.1, w: 0.42, h: 1.6 }, { cx: 0.98, cy: 0.1, w: 0.42, h: 1.6, flip: true }],
+    'hair-blue': [{ cx: -0.98, cy: 0.1, w: 0.48, h: 1.6 }, { cx: 0.98, cy: 0.1, w: 0.48, h: 1.6, flip: true }],
+  };
+  // Babies have a shorter, smaller body under the same big head
+  const BABY_BODY = { sx: 0.8, sy: 0.5 };
+  // How tall each kind of character stands in a room
+  const CHARACTER_HEIGHT = { human: { big: 290, baby: 165 }, bear: { big: 270, baby: 145 } };
+
+  const CIMG = {};
+  let CLAYOUT = {};
+  function loadInto(store, key, src) {
+    return new Promise((res) => {
+      const i = new Image();
+      i.onload = () => { store[key] = i; res(); };
+      i.onerror = () => res();
+      i.src = src;
+    });
+  }
+  async function loadCreatorArt() {
+    try { CLAYOUT = await (await fetch('../public/img/creator/layout.json')).json(); } catch { CLAYOUT = {}; }
+    const names = ['species-bear', 'species-human', ...CREATOR_GROUPS.slice(2, -1).flatMap((g) => g.options)].filter((n) => CLAYOUT[n]);
+    await Promise.all([
+      ...names.flatMap((n) => [loadInto(CIMG, n, `../public/img/creator/${n}.png`), loadInto(CIMG, n + '-glow', `../public/img/creator/${n}-glow.png`)]),
+      loadInto(CIMG, 'human-skin', '../public/img/creator/human-skin.png'),
+      loadInto(CIMG, 'human-face', '../public/img/creator/human-face.png'),
+      loadInto(CIMG, 'background', '../public/img/creator/background.jpg'),
+      loadInto(CIMG, 'bear', '../public/img/bear-char.png'),
+      loadInto(CIMG, 'go', '../public/img/menu/creative.png'),
+      loadInto(CIMG, 'go-glow', '../public/img/menu/creative-glow.png'),
+    ]);
+    CIMG['age-big'] = drawAgeButton(false);
+    CIMG['age-baby'] = drawAgeButton(true);
+  }
+  const loading = Promise.all([loadingThings, loadCreatorArt()]);
+
+  // A grown-up or a baby in black marker, like the little figures in her creator drawing
+  function drawAgeButton(baby) {
+    const b = AGE_BUTTONS[baby ? 'baby' : 'big'];
+    const cv = document.createElement('canvas'); cv.width = b.w; cv.height = b.h;
+    const c = cv.getContext('2d');
+    c.strokeStyle = '#151515'; c.lineCap = c.lineJoin = 'round';
+    const cx = b.w / 2, label = 54;
+    // Drawn in a 100-wide box, scaled to fit above the word
+    const k = Math.min(b.w / 100, (b.h - label) / (baby ? 120 : 190));
+    c.save();
+    c.translate(cx, 4); c.scale(k, k);
+    c.lineWidth = 9;
+    if (baby) {
+      c.beginPath(); c.arc(0, 42, 30, 0, 7); c.stroke();
+      c.beginPath(); c.arc(4, 8, 8, Math.PI * 0.9, Math.PI * 2.2); c.stroke(); // a curl
+      c.lineWidth = 6; c.beginPath(); c.arc(0, 48, 11, 0.2, Math.PI - 0.2); c.stroke();
+      c.lineWidth = 9;
+      c.beginPath(); c.moveTo(0, 72); c.lineTo(0, 100); c.moveTo(0, 80); c.lineTo(-26, 94); c.moveTo(0, 80); c.lineTo(26, 94);
+      c.moveTo(0, 100); c.lineTo(-17, 117); c.moveTo(0, 100); c.lineTo(17, 117); c.stroke();
+    } else {
+      c.beginPath(); c.arc(0, 32, 28, 0, 7); c.stroke();
+      c.lineWidth = 6; c.beginPath(); c.arc(0, 36, 12, 0.2, Math.PI - 0.2); c.stroke();
+      c.lineWidth = 9;
+      c.beginPath(); c.moveTo(0, 60); c.lineTo(0, 130); c.moveTo(0, 76); c.lineTo(-42, 112); c.moveTo(0, 76); c.lineTo(42, 112);
+      c.moveTo(0, 130); c.lineTo(-28, 185); c.moveTo(0, 130); c.lineTo(28, 185); c.stroke();
+    }
+    c.restore();
+    c.font = font(46); c.textAlign = 'center'; c.textBaseline = 'bottom'; c.fillStyle = '#151515';
+    c.fillText(baby ? 'Baby' : 'Big', cx, b.h - 2);
+    return cv;
+  }
+
+  function loadExploreLook() {
+    const look = { ...DEFAULT_LOOK };
+    try {
+      const saved = JSON.parse(localStorage.getItem(EXPLORE_CHARACTER_KEY));
+      CREATOR_GROUPS.forEach((g) => {
+        if (saved && (g.options.includes(saved[g.id]) || (g.optional && saved[g.id] === null))) look[g.id] = saved[g.id];
+      });
+    } catch { /* none */ }
+    return look;
+  }
+  function cleanLook(saved) {
+    const look = { ...DEFAULT_LOOK };
+    CREATOR_GROUPS.forEach((g) => {
+      if (saved && (g.options.includes(saved[g.id]) || (g.optional && saved[g.id] === null))) look[g.id] = saved[g.id];
+    });
+    return look;
+  }
+
+  // A cut-out piece stretched so its drawing (not its glow room) fills the box
+  function drawPiece(c, name, box, flip = false) {
+    const img = CIMG[name], info = CLAYOUT[name];
+    if (!img || !info) return;
+    c.save();
+    c.translate(box.x + box.w / 2, box.y + box.h / 2);
+    c.scale(box.w / (info.w - 2 * CREATOR_PAD) * (flip ? -1 : 1), box.h / (info.h - 2 * CREATOR_PAD));
+    c.drawImage(img, -img.width / 2, -img.height / 2);
+    c.restore();
+  }
+  const TINTED = {};
+  function tinted(name, color) {
+    const key = name + color;
+    if (TINTED[key]) return TINTED[key];
+    const img = CIMG[name];
+    const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
+    const c = cv.getContext('2d');
+    c.drawImage(img, 0, 0);
+    c.globalCompositeOperation = 'multiply'; c.fillStyle = color; c.fillRect(0, 0, cv.width, cv.height);
+    c.globalCompositeOperation = 'destination-in'; c.drawImage(img, 0, 0);
+    return (TINTED[key] = cv);
+  }
+
+  // Draws a human in drawing units with the neck at 0,0 (bears are just her bear drawing)
+  function drawHuman(c, look) {
+    const baby = look.age === 'baby';
+    c.save();
+    if (baby) c.scale(BABY_BODY.sx, BABY_BODY.sy);
+    c.strokeStyle = '#151515'; c.lineWidth = 28; c.lineCap = c.lineJoin = 'round';
+    c.beginPath();
+    BODY_LINES.forEach(([x1, y1, x2, y2]) => { c.moveTo(x1, y1); c.lineTo(x2, y2); });
+    c.stroke();
+    if (look.pants) drawPiece(c, look.pants, CLOTHES_BOXES[look.pants.startsWith('pants-skirt') ? 'skirt' : 'pants']);
+    if (look.shirt) drawPiece(c, look.shirt, CLOTHES_BOXES[look.shirt === 'shirt-dress' ? 'dress' : 'shirt']);
+    c.restore();
+    for (const name of ['human-skin', 'human-face']) {
+      const info = CLAYOUT[name], img = name === 'human-skin' ? tinted(name, CLAYOUT.skinColors[look.skin]) : CIMG[name];
+      if (info && img) c.drawImage(img, info.x - CREATOR_NECK.x, info.y - CREATOR_NECK.y);
+    }
+    if (look.hair) {
+      const head = HUMAN_HEAD;
+      c.save();
+      c.translate(head.x, head.y);
+      c.rotate(head.rotation);
+      HAIR_BOXES[look.hair].forEach((b) => {
+        const w = b.w * head.rx, h = b.h * head.ry;
+        drawPiece(c, look.hair, { x: b.cx * head.rx - w / 2, y: b.cy * head.ry - h / 2, w, h }, b.flip);
+      });
+      c.restore();
+    }
+  }
+  // Where a human reaches, in drawing units around the neck
+  function humanBounds(look) {
+    return { x0: -290, x1: 430, y0: -530, y1: look.age === 'baby' ? 425 * BABY_BODY.sy : 430 };
+  }
+  // A picture of the character, cut close, for putting in rooms
+  function renderCharacter(look) {
+    if (look.species === 'bear') return CIMG.bear;
+    const k = 0.45, b = humanBounds(look);
+    const cv = document.createElement('canvas');
+    cv.width = Math.ceil((b.x1 - b.x0) * k); cv.height = Math.ceil((b.y1 - b.y0) * k);
+    const c = cv.getContext('2d');
+    c.scale(k, k); c.translate(-b.x0, -b.y0);
+    drawHuman(c, look);
+    return cv;
+  }
+
+  // Your characters: { id, look } each
+  let characters = [];
+  let nextCharId = 1;
+  const CHAR_ART = {};
+  const charById = (id) => characters.find((ch) => ch.id === id);
+  function charArt(id) {
+    if (CHAR_ART[id]) return CHAR_ART[id];
+    const ch = charById(id);
+    return ch ? (CHAR_ART[id] = renderCharacter(ch.look)) : null;
+  }
+  function charName(look) {
+    const baby = look.age === 'baby';
+    if (look.species === 'bear') return baby ? 'Baby Bear' : 'Bear';
+    return baby ? 'Baby' : 'Person';
+  }
+
+  // Every thing in a room is either one of her drawings (THINGS) or a character you made
+  function defOf(t) {
+    if (t.kind === 'char') {
+      const ch = charById(t.char);
+      const look = ch ? ch.look : DEFAULT_LOOK;
+      return { h: CHARACTER_HEIGHT[look.species][look.age], tray: 'people', name: charName(look), made: true };
+    }
+    return THINGS[t.kind];
+  }
+  const artOf = (t) => (t.kind === 'char' ? charArt(t.char) : IMG[t.kind]);
+  const maskKey = (t) => (t.kind === 'char' ? 'char-' + t.char : t.kind);
 
   // A small copy of each drawing's see-through mask, so you grab the drawing and not the paper around it
   const MASKS = {};
-  function maskFor(name) {
+  function maskFor(name, img) {
     if (MASKS[name] !== undefined) return MASKS[name];
-    const img = IMG[name];
     if (!img) return (MASKS[name] = null);
     const w = 48, h = Math.max(8, Math.round(48 * img.height / img.width));
     const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
@@ -123,10 +341,14 @@
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (saved && saved.places) world = saved.places;
+    if (saved && Array.isArray(saved.characters)) {
+      characters = saved.characters.filter((ch) => ch && Number.isInteger(ch.id)).map((ch) => ({ id: ch.id, look: cleanLook(ch.look) }));
+      nextCharId = Math.max(0, ...characters.map((ch) => ch.id)) + 1;
+    }
   } catch { /* nothing saved */ }
   for (const p of PLACES) {
     if (!Array.isArray(world[p.id])) world[p.id] = startingThings(p);
-    world[p.id] = world[p.id].filter((t) => THINGS[t.kind]);
+    world[p.id] = world[p.id].filter((t) => (t.kind === 'char' ? charById(t.char) : THINGS[t.kind]));
     // The teacher, zookeeper and waiter are always there
     for (const [kind, x, y] of p.start) {
       if (THINGS[kind].person && !world[p.id].some((t) => t.kind === kind)) world[p.id].push({ kind, x, y });
@@ -136,8 +358,8 @@
   function writeSave() {
     try {
       const places = {};
-      for (const id in world) places[id] = world[id].map(({ kind, x, y, flip }) => ({ kind, x: Math.round(x), y: Math.round(y), flip: !!flip }));
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ places }));
+      for (const id in world) places[id] = world[id].map(({ kind, char, x, y, flip }) => ({ kind, char, x: Math.round(x), y: Math.round(y), flip: !!flip }));
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ places, characters }));
     } catch { /* storage full or blocked */ }
   }
 
@@ -553,6 +775,8 @@
     camX: 0,
     tray: null,           // { tab, index } while the drawer is open
     paused: null,         // { index, confirmReset } while the pause menu is open
+    creator: null,        // { look, cursor } while making a character
+    lastTab: 0,           // the drawer opens on the tab you used last
     toast: null,          // { text, until }
     fade: 0,
   };
@@ -599,7 +823,7 @@
   }
 
   function sizeOf(t) {
-    const img = IMG[t.kind], h = THINGS[t.kind].h;
+    const img = artOf(t), h = defOf(t).h;
     const w = img ? h * img.width / img.height : h * 0.7;
     return { w, h };
   }
@@ -612,7 +836,7 @@
       const lx = t.flip ? (t.x + w / 2 - wx) / w : (wx - (t.x - w / 2)) / w;
       const ly = (wy - (t.y - h)) / h;
       if (lx < 0 || lx > 1 || ly < 0 || ly > 1) continue;
-      const m = maskFor(t.kind);
+      const m = maskFor(maskKey(t), artOf(t));
       if (!m) return t;
       // Forgiving: check a little patch around the spot
       const mx = Math.floor(lx * m.w), my = Math.floor(ly * m.h);
@@ -651,7 +875,7 @@
   }
   function putAway(t) {
     if (!t) return false;
-    const def = THINGS[t.kind];
+    const def = defOf(t);
     if (!def.tray) {
       showToast(def.person ? `The ${def.name.toLowerCase()} lives here!` : `The ${def.name.toLowerCase()} stays here`);
       sfx.nope();
@@ -665,8 +889,9 @@
     writeSave();
     return true;
   }
-  function addThing(kind, wx, wy) {
-    const t = { id: nextId++, kind, x: wx, y: wy };
+  function addThing(entry, wx, wy) {
+    const t = { id: nextId++, kind: entry.kind, x: wx, y: wy };
+    if (entry.kind === 'char') t.char = entry.char;
     things().push(t);
     sfx.add();
     return t;
@@ -703,15 +928,44 @@
     trash: () => ({ x: W - 150, y: VH - 160, w: 130, h: 140 }),
     trayBox: () => ({ x: 10, y: VH - 210, w: W - 20, h: 200 }),
   };
-  function trayList(tab) { return Object.keys(THINGS).filter((k) => THINGS[k].tray === TRAYS[tab].id); }
+  // What's in a drawer: her toys or furniture, or "New" and the characters you've made
+  function trayList(tab) {
+    if (TRAYS[tab].id === 'people') {
+      return [{ kind: 'new', name: 'New', h: 0 }, ...characters.slice().reverse().map((ch) => ({ kind: 'char', char: ch.id, name: charName(ch.look), h: CHARACTER_HEIGHT[ch.look.species][ch.look.age] }))];
+    }
+    return Object.keys(THINGS).filter((k) => THINGS[k].tray === TRAYS[tab].id).map((k) => ({ kind: k, name: THINGS[k].name, h: THINGS[k].h }));
+  }
+  const entryArt = (e) => (e.kind === 'char' ? charArt(e.char) : IMG[e.kind]);
+  // The drawer scrolls sideways when there's more than fits
+  function traySize(n) {
+    const box = UI.trayBox();
+    return clamp((box.w - 40) / n - 12, 100, 130);
+  }
+  function trayScrollMax() {
+    const box = UI.trayBox(), n = trayList(game.tray.tab).length, size = traySize(n);
+    return Math.max(0, 24 + n * (size + 12) + 12 - box.w);
+  }
   function traySlots() {
-    const box = UI.trayBox(), list = trayList(game.tray.tab);
-    const size = Math.min(130, (box.w - 40) / list.length - 12);
-    return list.map((kind, i) => ({ kind, x: box.x + 24 + i * (size + 12), y: box.y + 62, w: size, h: size }));
+    const box = UI.trayBox(), list = trayList(game.tray.tab), size = traySize(list.length);
+    const scroll = game.tray.scroll || 0;
+    return list.map((e, i) => ({ ...e, x: box.x + 24 + i * (size + 12) - scroll, y: box.y + 62, w: size, h: size }));
+  }
+  function showTraySlot(index) {
+    const box = UI.trayBox(), size = traySize(trayList(game.tray.tab).length);
+    const left = 24 + index * (size + 12);
+    let scroll = game.tray.scroll || 0;
+    if (left - scroll < 24) scroll = left - 24;
+    if (left + size - scroll > box.w - 24) scroll = left + size - box.w + 24;
+    game.tray.scroll = clamp(scroll, 0, trayScrollMax());
+  }
+  function setTrayTab(tab) {
+    game.tray.tab = game.lastTab = tab;
+    game.tray.index = 0;
+    game.tray.scroll = 0;
   }
   function trayTabs() {
     const box = UI.trayBox();
-    return TRAYS.map((t, i) => ({ x: box.x + 20 + i * 210, y: box.y + 8, w: 196, h: 48 }));
+    return TRAYS.map((t, i) => ({ x: box.x + 20 + i * 186, y: box.y + 8, w: 174, h: 48 }));
   }
   const inBox = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   function pauseItems() {
@@ -751,6 +1005,12 @@
     if (e.button === 2) return;
 
     if (inBox(p, UI.full())) { toggleFullscreen(); return; }
+    if (game.creator) {
+      if (inBox(p, UI.creatorBack())) { closeCreator(); return; }
+      const i = creatorItemAt(p);
+      if (i >= 0) creatorChoose(i);
+      return;
+    }
     if (game.paused) {
       const rows = pauseRows();
       const i = rows.findIndex((r) => inBox(p, r));
@@ -769,16 +1029,14 @@
     if (hand.holding) dropHeld();
     if (game.tray) {
       const tab = trayTabs().findIndex((b) => inBox(p, b));
-      if (tab >= 0) { game.tray.tab = tab; game.tray.index = 0; sfx.move(); return; }
-      const slot = traySlots().find((s) => inBox(p, s));
-      if (slot) {
-        // Pull a new one out of the drawer; let go somewhere in the room to put it there
-        const w = toWorld(p.x, p.y);
-        const t = addThing(slot.kind, w.x, w.y + THINGS[slot.kind].h / 2);
-        drag = { kind: 'new', thing: t, offX: 0, offY: -THINGS[slot.kind].h / 2, pointerId: e.pointerId, startX: p.x, startY: p.y };
+      if (tab >= 0) { setTrayTab(tab); sfx.move(); return; }
+      if (inBox(p, UI.trayBox())) {
+        // Drag sideways to scroll the drawer, drag up to pull a thing out, or just tap it
+        const box = UI.trayBox();
+        const slot = traySlots().find((sl) => sl.x + sl.w > box.x && sl.x < box.x + box.w && inBox(p, sl));
+        drag = { kind: 'tray', slot, startX: p.x, startY: p.y, scroll: game.tray.scroll || 0, pointerId: e.pointerId };
         return;
       }
-      if (inBox(p, UI.trayBox())) return;
     }
     if (inBox(p, UI.addButton())) { toggleTray(); return; }
 
@@ -799,6 +1057,19 @@
     if (!drag || drag.pointerId !== e.pointerId) return;
     if (drag.kind === 'pan') {
       game.camX = clampCam(drag.camX - (p.x - drag.startX));
+    } else if (drag.kind === 'tray') {
+      const dx = p.x - drag.startX, dy = p.y - drag.startY;
+      const pulled = !inBox(p, UI.trayBox()) || dy < -30;
+      if (drag.scrolling || (!pulled && trayScrollMax() > 0 && Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy))) {
+        drag.scrolling = true;
+        game.tray.scroll = clamp(drag.scroll - dx, 0, trayScrollMax());
+      } else if (drag.slot && drag.slot.kind !== 'new' && pulled) {
+        // Pull a new one out of the drawer; let go somewhere in the room to put it there
+        const w = toWorld(p.x, p.y);
+        const t = addThing(drag.slot, w.x, w.y + drag.slot.h / 2);
+        drag = { kind: 'new', thing: t, offX: 0, offY: -drag.slot.h / 2, pointerId: e.pointerId, startX: p.x, startY: p.y };
+        game.tray = null;
+      }
     } else if (drag.kind === 'thing' || drag.kind === 'new') {
       const w = toWorld(p.x, p.y);
       drag.thing.x = w.x - drag.offX;
@@ -815,17 +1086,21 @@
       if (i === d.index) enterPlace(i);
       return;
     }
+    if (d.kind === 'tray') {
+      if (d.scrolling || !d.slot || !game.tray) return;
+      // Tapped: "New" opens the character creator, anything else goes in the middle of the room on screen
+      if (d.slot.kind === 'new') { openCreator(); return; }
+      const w = toWorld(W / 2, 0);
+      const t = addThing(d.slot, w.x + (Math.random() - 0.5) * 200, 640);
+      game.tray = null;
+      keepInRoom(t);
+      bounces.set(t, performance.now());
+      writeSave();
+      return;
+    }
     if (d.kind === 'thing' || d.kind === 'new') {
       const t = d.thing;
       if (inBox(p, UI.trash())) { putAway(t); return; }
-      if (d.kind === 'new' && game.tray && inBox(p, UI.trayBox())) {
-        // Just tapped: put it in the middle of the room on screen
-        const w = toWorld(W / 2, 0);
-        t.x = w.x + (Math.random() - 0.5) * 200; t.y = 620;
-        game.tray = null;
-      } else if (d.kind === 'new') {
-        game.tray = null;
-      }
       keepInRoom(t);
       bounces.set(t, performance.now());
       sfx.drop();
@@ -837,7 +1112,12 @@
   canvas.addEventListener('pointerleave', () => { pointer.over = false; });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('wheel', (e) => {
-    if (game.screen !== 'inside') return;
+    if (game.screen !== 'inside' || game.creator) return;
+    if (game.tray && inBox(pointer, UI.trayBox())) {
+      game.tray.scroll = clamp((game.tray.scroll || 0) + (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY), 0, trayScrollMax());
+      e.preventDefault();
+      return;
+    }
     game.camX = clampCam(game.camX + (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY));
     e.preventDefault();
   }, { passive: false });
@@ -848,9 +1128,157 @@
     return clamp(x, 0, room - W);
   }
 
+  // A new thing comes out in the hand, held by its bottom so you can see it above the hand
+  function holdNew(entry) {
+    const w = toWorld(W / 2, VH / 2 + 60);
+    hand.x = W / 2; hand.y = VH / 2 + 60;
+    hand.holding = addThing(entry, w.x, w.y + 20);
+    hand.offX = 0; hand.offY = 20;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The character creator: her drawing, with every piece where she drew it
+
+  let CREATOR_ITEMS = null;
+  function creatorItems() {
+    if (CREATOR_ITEMS) return CREATOR_ITEMS;
+    CREATOR_ITEMS = [];
+    CREATOR_GROUPS.forEach((g, gi) => g.options.forEach((option) => {
+      let def, img, glow;
+      if (g.id === 'species') { def = CLAYOUT['species-' + option]; img = CIMG['species-' + option]; glow = CIMG['species-' + option + '-glow']; }
+      else if (g.id === 'age') { def = AGE_BUTTONS[option]; img = CIMG['age-' + option]; }
+      else if (g.id === 'go') { def = { x: 1715, y: 1480, w: 440, h: 113 }; img = CIMG.go; glow = CIMG['go-glow']; }
+      else { def = CLAYOUT[option]; img = CIMG[option]; glow = CIMG[option + '-glow']; }
+      if (!def) return;
+      CREATOR_ITEMS.push({ group: gi, option, x: def.x, y: def.y, w: def.w, h: def.h, img, glow });
+    }));
+    return CREATOR_ITEMS;
+  }
+  function creatorView() {
+    const s = Math.min(W / CREATOR_ART.w, VH / CREATOR_ART.h);
+    return { s, x: (W - CREATOR_ART.w * s) / 2, y: (VH - CREATOR_ART.h * s) / 2 };
+  }
+  const toArt = (p) => { const v = creatorView(); return { x: (p.x - v.x) / v.s, y: (p.y - v.y) / v.s }; };
+  const creatorItemEnabled = (it) => !CREATOR_GROUPS[it.group].humanOnly || game.creator.look.species === 'human';
+  UI.creatorBack = () => ({ x: 18, y: VH - 82, w: 150, h: 64 });
+
+  function openCreator() {
+    const look = loadExploreLook();
+    look.age = 'big';
+    game.creator = { look, cursor: creatorItems().findIndex((it) => CREATOR_GROUPS[it.group].id === 'species' && it.option === look.species) };
+    game.tray = null;
+    hand.holding = null;
+    drag = null;
+    game.fade = 1;
+    sfx.door();
+  }
+  function closeCreator() {
+    game.creator = null;
+    game.fade = 1;
+    sfx.door();
+  }
+  function finishCreator() {
+    const ch = { id: nextCharId++, look: { ...game.creator.look } };
+    characters.push(ch);
+    game.creator = null;
+    game.lastTab = TRAYS.findIndex((t) => t.id === 'people');
+    const entry = { kind: 'char', char: ch.id };
+    if (usingHand()) holdNew(entry);
+    else {
+      const w = toWorld(W / 2, 0);
+      const t = addThing(entry, w.x, 640);
+      bounces.set(t, performance.now());
+    }
+    writeSave();
+    game.fade = 1;
+    sfx.add();
+  }
+  // Picks the piece under the cursor. Picking what's already picked takes it off again (hair and clothes only)
+  function creatorChoose(index) {
+    const it = creatorItems()[index];
+    if (!it) return;
+    if (!creatorItemEnabled(it)) { sfx.nope(); return; }
+    game.creator.cursor = index;
+    const g = CREATOR_GROUPS[it.group];
+    if (g.id === 'go') { finishCreator(); return; }
+    const look = game.creator.look;
+    look[g.id] = look[g.id] === it.option && g.optional ? null : it.option;
+    tone(520 + g.options.indexOf(it.option) * 60, 0.06, 'square', 0.05);
+  }
+  // Moves the cursor to the nearest piece in that direction, preferring ones straight ahead
+  function moveCreatorCursor(dx, dy) {
+    const items = creatorItems(), from = items[game.creator.cursor];
+    const fx = from.x + from.w / 2, fy = from.y + from.h / 2, length = Math.hypot(dx, dy);
+    let best = -1, bestScore = Infinity;
+    items.forEach((it, i) => {
+      if (i === game.creator.cursor || !creatorItemEnabled(it)) return;
+      const vx = it.x + it.w / 2 - fx, vy = it.y + it.h / 2 - fy;
+      const ahead = (vx * dx + vy * dy) / length;
+      if (ahead <= 20) return;
+      const score = ahead + Math.abs(vx * dy - vy * dx) / length * 2.5;
+      if (score < bestScore) { bestScore = score; best = i; }
+    });
+    if (best >= 0) { game.creator.cursor = best; sfx.move(); }
+  }
+  function creatorItemAt(p) {
+    const a = toArt(p);
+    return creatorItems().findIndex((it) => a.x >= it.x && a.x <= it.x + it.w && a.y >= it.y && a.y <= it.y + it.h);
+  }
+  function updateCreator(now) {
+    const s = stepped(now);
+    if (s) moveCreatorCursor(s.dx, s.dy);
+    if (device === 'mouse' && pointer.over) {
+      const i = creatorItemAt(pointer);
+      if (i >= 0 && i !== game.creator.cursor && creatorItemEnabled(creatorItems()[i])) game.creator.cursor = i;
+    }
+    if (hit('confirm')) creatorChoose(game.creator.cursor);
+    else if (hit('back')) closeCreator();
+    else if (hit('pause')) { if (usingPad()) finishCreator(); else closeCreator(); }
+  }
+  function drawCreator(c, now) {
+    const v = creatorView(), look = game.creator.look;
+    c.fillStyle = '#ffffff'; c.fillRect(0, 0, W, VH);
+    c.save();
+    c.translate(v.x, v.y); c.scale(v.s, v.s);
+    if (CIMG.background) c.drawImage(CIMG.background, 0, 0);
+    creatorItems().forEach((it, i) => {
+      const g = CREATOR_GROUPS[it.group];
+      const enabled = creatorItemEnabled(it);
+      const chosen = enabled && g.id !== 'go' && look[g.id] === it.option;
+      const pointed = i === game.creator.cursor && device !== 'touch';
+      c.save();
+      c.globalAlpha = enabled ? 1 : 0.2;
+      c.translate(it.x + it.w / 2, it.y + it.h / 2);
+      if (pointed && g.id !== 'species') { c.rotate(0.03 * Math.sin(now / 300)); c.scale(1.08 + 0.015 * Math.sin(now / 220), 1.08 + 0.015 * Math.sin(now / 220)); }
+      if (pointed) {
+        c.strokeStyle = '#ff0022'; c.lineWidth = 22;
+        roundRect(c, -it.w / 2 + 6, -it.h / 2 + 6, it.w - 12, it.h - 12, Math.min(it.w, it.h) / 3); c.stroke();
+      }
+      if ((chosen || (pointed && g.id === 'go'))) {
+        if (it.glow) c.drawImage(it.glow, -it.w / 2, -it.h / 2, it.w, it.h);
+        else { c.fillStyle = 'rgba(255, 200, 60, 0.55)'; c.beginPath(); c.ellipse(0, 0, it.w * 0.55, it.h * 0.55, 0, 0, 7); c.fill(); }
+      }
+      if (it.img) c.drawImage(it.img, -it.w / 2, -it.h / 2, it.w, it.h);
+      c.restore();
+    });
+    // The character, standing where it was drawn (babies stand on the same floor)
+    c.translate(CREATOR_NECK.x, CREATOR_NECK.y);
+    if (look.species === 'bear') {
+      const k = look.age === 'baby' ? 0.55 : 1, bw = 626 * 4 / 3 * k, bh = 766 * 4 / 3 * k;
+      if (CIMG.bear) c.drawImage(CIMG.bear, 17 - bw / 2, 328 - bh, bw, bh);
+    } else {
+      if (look.age === 'baby') c.translate(0, 425 * (1 - BABY_BODY.sy));
+      drawHuman(c, look);
+    }
+    c.restore();
+    drawUiButton(c, UI.creatorBack(), '← Back', { size: 28 });
+    drawFullscreenButton(c);
+    drawPrompts(c, [['move', 'Move'], ['confirm', 'Choose'], ['back', 'Back'], ...(usingPad() ? [['pause', 'Done']] : [])], W / 2, 34, 'center', 30);
+  }
+
   function toggleTray() {
     if (game.tray) game.tray = null;
-    else { game.tray = { tab: 0, index: 0 }; if (hand.holding) dropHeld(); }
+    else { game.tray = { tab: game.lastTab || 0, index: 0, scroll: 0 }; if (hand.holding) dropHeld(); }
     sfx.move();
   }
 
@@ -871,6 +1299,7 @@
     pollInput();
     if (hit('fullscreen')) toggleFullscreen();
 
+    if (game.creator) { updateCreator(now); return; }
     if (game.paused) {
       const s = stepped(now);
       const n = pauseItems().length;
@@ -903,20 +1332,14 @@
     if (game.tray) {
       const list = trayList(game.tray.tab);
       const s = stepped(now);
-      if (s && s.dx) { game.tray.index = clamp(game.tray.index + s.dx, 0, list.length - 1); sfx.move(); }
-      if (hit('nextTab') || hit('prevTab') || (s && s.dy)) {
-        game.tray.tab = (game.tray.tab + 1) % TRAYS.length;
-        game.tray.index = Math.min(game.tray.index, trayList(game.tray.tab).length - 1);
-        sfx.move();
-      }
+      if (s && s.dx) { game.tray.index = clamp(game.tray.index + s.dx, 0, list.length - 1); showTraySlot(game.tray.index); sfx.move(); }
+      const step = hit('nextTab') || (s && s.dy > 0) ? 1 : hit('prevTab') || (s && s.dy < 0) ? -1 : 0;
+      if (step) { setTrayTab((game.tray.tab + step + TRAYS.length) % TRAYS.length); sfx.move(); }
       if (hit('confirm')) {
-        // The new thing comes out in your hand, ready to put down
-        const kind = list[game.tray.index];
-        const w = toWorld(W / 2, VH / 2);
-        hand.x = W / 2; hand.y = VH / 2 + 60;
-        // Held by its bottom, so you can see it above the hand
-        const t = addThing(kind, w.x, w.y + 20);
-        hand.holding = t; hand.offX = 0; hand.offY = 20;
+        const entry = list[game.tray.index];
+        if (entry.kind === 'new') { openCreator(); return; }
+        // The new thing comes out in your hand, ready to put down, held by its bottom so you can see it
+        holdNew(entry);
         game.tray = null;
       } else if (hit('back') || hit('add')) toggleTray();
       return;
@@ -1084,7 +1507,7 @@
   }
 
   function drawThing(c, t, x, y, now, lifted = false) {
-    const img = IMG[t.kind];
+    const img = artOf(t);
     const { w, h } = sizeOf(t);
     c.save();
     c.translate(x, y);
@@ -1097,7 +1520,7 @@
       else sy = 1 - Math.sin(k * Math.PI) * 0.12 * (1 - k);
     }
     if (lifted) rot = Math.sin(now / 120) * 0.05;
-    else if (THINGS[t.kind].person) rot = Math.sin(now / 700 + t.id) * 0.025;
+    else if (defOf(t).person || t.kind === 'char') rot = Math.sin(now / 700 + t.id) * 0.025;
     // Shadow on the floor
     c.fillStyle = 'rgba(40, 30, 80, 0.13)';
     c.beginPath(); c.ellipse(0, lifted ? 26 : -2, w * 0.38, 12, 0, 0, 7); c.fill();
@@ -1249,22 +1672,40 @@
       c.fillStyle = INK; c.fillText('Switch', x, last.y + last.h / 2 + 1);
       c.restore();
     }
+    c.save();
+    c.beginPath(); c.rect(box.x + 6, box.y + 56, box.w - 12, box.h - 60); c.clip();
     traySlots().forEach((s, i) => {
       const picked = usingHand() && i === game.tray.index;
-      c.fillStyle = picked ? '#fff3a0' : '#f4f0ff';
+      const isNew = s.kind === 'new';
+      c.fillStyle = picked ? '#fff3a0' : isNew ? '#fffbe0' : '#f4f0ff';
       roundRect(c, s.x, s.y, s.w, s.h, 18); c.fill();
       c.lineWidth = picked ? 6 : 3; c.strokeStyle = picked ? '#ffb000' : 'rgba(90,73,181,0.4)'; c.stroke();
-      const img = IMG[s.kind];
+      const bob = picked ? Math.sin(now / 200) * 3 : 0;
+      if (isNew) {
+        // A big plus: make a new character
+        c.save();
+        c.strokeStyle = PENCIL; c.lineWidth = 10; c.lineCap = 'round';
+        const cx = s.x + s.w / 2, cy = s.y + (s.h - 30) / 2 + 4 + bob, r = Math.min(26, s.w / 4);
+        c.beginPath(); c.moveTo(cx - r, cy); c.lineTo(cx + r, cy); c.moveTo(cx, cy - r); c.lineTo(cx, cy + r); c.stroke();
+        c.restore();
+      }
+      const img = isNew ? null : entryArt(s);
       if (img) {
         const k = Math.min((s.w - 16) / img.width, (s.h - 40) / img.height);
-        const bob = picked ? Math.sin(now / 200) * 3 : 0;
         c.drawImage(img, s.x + s.w / 2 - img.width * k / 2, s.y + 8 + (s.h - 40 - img.height * k) / 2 + bob, img.width * k, img.height * k);
       }
       c.font = font(Math.min(18, s.w / 7)); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = PENCIL;
-      c.fillText(THINGS[s.kind].name, s.x + s.w / 2, s.y + s.h - 16);
+      c.fillText(s.name, s.x + s.w / 2, s.y + s.h - 16);
     });
     c.restore();
-    drawPrompts(c, [['move', 'Pick'], ['confirm', 'Add it'], ['back', 'Close']], W / 2, box.y - 34, 'center', 30);
+    // Little arrows when the drawer has more than fits
+    const scroll = game.tray.scroll || 0, max = trayScrollMax();
+    c.fillStyle = 'rgba(90, 73, 181, 0.7)';
+    if (scroll > 2) { c.beginPath(); c.moveTo(box.x + 8, box.y + 127); c.lineTo(box.x + 24, box.y + 107); c.lineTo(box.x + 24, box.y + 147); c.fill(); }
+    if (scroll < max - 2) { c.beginPath(); c.moveTo(box.x + box.w - 8, box.y + 127); c.lineTo(box.x + box.w - 24, box.y + 107); c.lineTo(box.x + box.w - 24, box.y + 147); c.fill(); }
+    c.restore();
+    const onNew = trayList(game.tray.tab)[game.tray.index]?.kind === 'new';
+    drawPrompts(c, [['move', 'Pick'], ['confirm', onNew ? 'Make a character' : 'Add it'], ['back', 'Close']], W / 2, box.y - 34, 'center', 30);
   }
 
   function drawPause(c) {
@@ -1283,7 +1724,8 @@
     const c = ctx;
     c.setTransform(scale, 0, 0, scale, 0, 0);
     c.clearRect(0, 0, W, VH);
-    if (game.screen === 'town') drawTown(c, now);
+    if (game.creator) drawCreator(c, now);
+    else if (game.screen === 'town') drawTown(c, now);
     else drawInside(c, now);
     if (game.paused) drawPause(c);
     if (game.toast && now < game.toast.until) {
@@ -1322,5 +1764,5 @@
   });
 
   // For tests and screenshots
-  window.__creative = { game, hand, world, enterPlace, backToTown, PLACES, setDevice: (d) => { device = d; } };
+  window.__creative = { game, hand, world, enterPlace, backToTown, PLACES, openCreator, creatorItems, creatorView, get characters() { return characters; }, setDevice: (d) => { device = d; } };
 })();

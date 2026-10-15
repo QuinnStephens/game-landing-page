@@ -12,6 +12,8 @@ The menu art lives in `public/img/menu/`: `background.jpg` and one PNG per butto
 
 A dollhouse-style town, like Avatar World, at `creative/` (its own page, `creative/game.js`, plain canvas with no libraries). The town shows six places from Violeta's drawings: Home, Park, Restaurant, Library, School and Zoo. Pick one to go inside, then look around (drag the floor or wall, use the mouse wheel, or push the hand against the side of the screen) and move everything around. The teacher, the zookeeper and the waiter always live at the school, the zoo and the restaurant: you can move them but not put them away. **+ Add** opens a drawer of toys (phone, book, teddy bear, doll, block, dollhouse) and furniture (baby bed, big kid bed, chair, fridge, table and chairs, baby swing, toilet); drag one out, or drag anything onto **Put away** to take it out. Everything is remembered in the browser, and the pause menu can start a place over.
 
+The **People** drawer has your own characters. **New** opens the same hand-drawn character creator as Explore (bear or human, skin, hair, shirts and pants), plus **Big** or **Baby** in the empty top-left corner (placeholder figures until she draws them). Press the **Creative** button in the bottom right (or Start on a controller) to finish, and the character goes into the place you're in. Every character you make stays in the People drawer, so you can put them in any place, as many times as you like. Babies have the same big head on a small body; baby bears are small bears. The creator starts from your Explore character.
+
 | Action | Keyboard | Controller | Mouse / touch |
 | --- | --- | --- | --- |
 | Move the hand / pick a place | Arrow keys or WASD | Left stick or D-pad | |
@@ -20,6 +22,7 @@ A dollhouse-style town, like Avatar World, at `creative/` (its own page, `creati
 | Put away | X or Delete | X (Y on Nintendo) | Drag onto **Put away** |
 | Turn a thing around | R | RT | |
 | Switch drawer tab | Q / Tab | LB / RB | Tap the tab |
+| Finish a new character | Space on **Creative** | Start, or A on **Creative** | Tap **Creative** |
 | Back to the town / main menu | Backspace or B | B (A on Nintendo) | **← Town** / **Menu** |
 | Pause | Esc | Start | |
 | Full screen | F | | The corner button |
