@@ -4,9 +4,32 @@ A Pixi + Matter.js physics game. It's a single static `index.html` with assets i
 
 ## Main menu
 
-The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** and **Survival** open the character creator first; **Creative** says "coming soon" for now.
+The game starts on the hand-drawn main menu. Pick a button with the arrow keys, the D-pad or the left stick (or the mouse), and press Enter, Space or A (or click). The selected button glows. **Explore** and **Survival** open the character creator first; **Creative** opens the town (see below).
 
 The menu art lives in `public/img/menu/`: `background.jpg` and one PNG per button, cut from the layers of the original drawing, plus a `-glow.png` for each button's highlight. Button positions in `index.html` (`MENU_BUTTONS`) are the layer positions in that 2224x1668 drawing.
+
+## Creative
+
+A dollhouse-style town, like Avatar World, at `creative/` (its own page, `creative/game.js`, plain canvas with no libraries). The town shows six places from Violeta's drawings: Home, Park, Restaurant, Library, School and Zoo. Pick one to go inside, then look around (drag the floor or wall, use the mouse wheel, or push the hand against the side of the screen) and move everything around. The teacher, the zookeeper and the waiter always live at the school, the zoo and the restaurant: you can move them but not put them away. **+ Add** opens a drawer of toys (phone, book, teddy bear, doll, block, dollhouse) and furniture (baby bed, big kid bed, chair, fridge, table and chairs, baby swing, toilet); drag one out, or drag anything onto **Put away** to take it out. Everything is remembered in the browser, and the pause menu can start a place over.
+
+The **People** drawer has your own characters. **New** opens the same hand-drawn character creator as Explore (bear or human, skin, hair, shirts and pants), plus **Big** or **Baby** in the empty top-left corner (placeholder figures until she draws them). Press the **Creative** button in the bottom right (or Start on a controller) to finish, and the character goes into the place you're in. Every character you make stays in the People drawer, so you can put them in any place, as many times as you like. Babies have the same big head on a small body; baby bears are small bears. The creator starts from your Explore character.
+
+| Action | Keyboard | Controller | Mouse / touch |
+| --- | --- | --- | --- |
+| Move the hand / pick a place | Arrow keys or WASD | Left stick or D-pad | |
+| Go inside, pick up, put down | Space, Enter or E | A (B on Nintendo) | Click / tap, drag |
+| Open the drawer | T | Y (X on Nintendo) | **+ Add** |
+| Put away | X or Delete | X (Y on Nintendo) | Drag onto **Put away** |
+| Turn a thing around | R | RT | |
+| Switch drawer tab | Q / Tab | LB / RB | Tap the tab |
+| Finish a new character | Space on **Creative** | Start, or A on **Creative** | Tap **Creative** |
+| Back to the town / main menu | Backspace or B | B (A on Nintendo) | **← Town** / **Menu** |
+| Pause | Esc | Start | |
+| Full screen | F | | The corner button |
+
+Button prompts follow whatever you last used, including Switch Pro, PlayStation and Steam Deck button names.
+
+Her drawings are cut out of the notebook photos by `tools/cut_creative_art.py` (`python3 tools/cut_creative_art.py <folder of photos>`; it needs numpy, scipy and Pillow) into `public/img/creative/`, each on a white paper "sticker" so light pencil shows up. The box each piece is cut from is listed at the top of the script. The insides of the places (walls, floors, windows, the blackboard, the zoo's fences and so on) are placeholders painted in code to look like her pencil and crayon (`PAINTERS` in `creative/game.js`), ready to be swapped for her drawings. What each place starts with is `PLACES` there, and how big each thing is, and which drawer it's in, is `THINGS`.
 
 ## Character creator
 

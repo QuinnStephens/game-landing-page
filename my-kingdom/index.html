@@ -1565,7 +1565,7 @@
         app.stage.addChild(mainMenu);
         mainMenuArt.addChild(new PIXI.Sprite(await PIXI.Assets.load('public/img/menu/background.jpg')));
 
-        const menu = { index: 1 };
+        const menu = { index: location.hash === '#creative' ? 0 : 1 }; // Creative comes back here with #creative
         const menuItems = await Promise.all(MENU_BUTTONS.map(async (def, i) => {
             const [texture, glowTexture] = await Promise.all([
                 PIXI.Assets.load(`public/img/menu/${def.id}.png`),
@@ -1607,6 +1607,8 @@
             const item = menuItems[menu.index];
             if (item.id === 'explore' || item.id === 'survival') {
                 openCreator(item.id);
+            } else if (item.id === 'creative') {
+                location.href = 'creative/';
             } else {
                 showToast(item.label + ' is coming soon!');
                 blip(330, 0.12, 'triangle');
