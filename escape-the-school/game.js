@@ -37,7 +37,8 @@
   // ---------------------------------------------------------------------------
   // Art
   const IMG = {};
-  const ART = ['girl1', 'girl2', 'girl1-seated', 'girl2-seated', 'teacher', 'teacher-back', 'janitor', 'cart', 'lockers', 'sleeper', 'student', 'door'];
+  const ART = ['girl1', 'girl2', 'girl1-seated', 'girl2-seated', 'teacher', 'teacher-back', 'janitor', 'cart', 'lockers', 'sleeper', 'student', 'door',
+    'room11', 'friend', 'lounge-woman', 'lounge-man', 'lounge-table'];
   function loadImage(src) {
     return new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
   }
@@ -184,6 +185,9 @@
     hide() { tone(250, 0.1, 'triangle', 0.1, 120); noise(0.1, 0.08, 1200, 'lowpass'); },
     snore() { tone(110, 0.6, 'sine', 0.05, 160); },
     win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, 'triangle', 0.1, 0, i * 0.13)); },
+    item() { [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, 'square', 0.06, 0, i * 0.09)); },
+    spray() { noise(0.7, 0.16, 2500); },
+    fart() { tone(95, 0.8, 'sawtooth', 0.12, 45); noise(0.8, 0.18, 260, 'lowpass'); },
     locked() { tone(160, 0.08, 'square', 0.08); tone(160, 0.08, 'square', 0.08, 0, 0.12); },
   };
 
@@ -441,7 +445,7 @@
 
   // ---------------------------------------------------------------------------
   // Game state
-  let mode = 'loading'; // loading | title | pick | hall | class | chase | won
+  let mode = 'loading'; // loading | title | pick | hall | class | room11 | lounge | won
   let paused = false, pauseSel = 0;
   let t = 0;            // seconds since the page started
   let hero = 'girl1';
@@ -530,9 +534,18 @@
 
   // ---------------------------------------------------------------------------
   // Title and character pick
+  // Once you've reached chapter 2, the title lets you jump straight to it.
+  let titleSel = 0, startCh = 1;
+  const TITLE_ITEMS = ['Start', 'Chapter 2'];
   function updateTitle() {
     if (hit('fullscreen')) toggleFullscreen();
-    if (hit('confirm') || tap) { sfx.ok(); mode = 'pick'; }
+    let go = hit('confirm');
+    if (save.ch2) {
+      if (hit('up') || hit('down')) { titleSel = 1 - titleSel; sfx.move(); }
+      const tapped = menuTap(330, 2);
+      if (tapped >= 0) { titleSel = tapped; go = true; }
+    } else if (tap) go = true;
+    if (go) { sfx.ok(); startCh = save.ch2 ? titleSel + 1 : 1; mode = 'pick'; }
   }
   const titleSketch = new Sketch(7);
   {
@@ -549,7 +562,8 @@
     drawSprite(c, IMG.girl1, 900, 680, 380, { tilt: Math.sin(t * 2) * 0.02 });
     drawSprite(c, IMG.girl2, 1080, 680, 360, { tilt: Math.sin(t * 2 + 1) * 0.02 });
     c.restore();
-    drawPrompts(c, [['confirm', 'Start'], ['fullscreen', 'Fullscreen']], W / 2, 600, 'center', 40);
+    if (save.ch2) drawMenu(c, TITLE_ITEMS, titleSel, W / 2, 330);
+    drawPrompts(c, [['confirm', save.ch2 ? 'Pick' : 'Start'], ['fullscreen', 'Fullscreen']], W / 2, 600, 'center', 40);
   }
 
   function updatePick() {
@@ -560,7 +574,7 @@
     if (go) {
       hero = pickSel ? 'girl2' : 'girl1';
       sfx.ok();
-      fadeTo(startHall);
+      fadeTo(startCh === 2 ? startChapter2 : startHall);
     }
   }
   function drawPick(c) {
@@ -589,10 +603,12 @@
   // The hallway, side on. One long hallway is used twice: walking to class at the
   // start, and running away from the teacher in the chase.
   const FLOOR = 640;           // where feet stand
-  const HALL_W = 4500;
+  const HALL_W = 5000;
   const DOOR_X = 700;          // the classroom door
   const EXIT_X = 4220;         // locked doors at the end
   const JAN_HOME = 1450;       // the janitor mops here, facing the classroom
+  const ROOM11_X = 3880;       // where your best friend's class is
+  const LOUNGE_X = 4680;       // the teachers' lounge, past the exit
   const SPOTS = [              // hiding spots, all past the janitor
     { kind: 'cart', x: 1930, half: 150 },
     { kind: 'closet', x: 2320, half: 95, label: 'Janitor' },
@@ -666,6 +682,12 @@
     // Chain and padlock
     for (let i = -3; i <= 3; i++) s.circle(EXIT_X + i * 18, 410 + Math.abs(i) * 4, 10, 3, INK, 7);
     s.rect(EXIT_X - 18, 432, 36, 32, 4).circle(EXIT_X, 432, 12, 4);
+    // The teachers' lounge door, with a coffee cup in its window
+    s.fill(LOUNGE_X - 90, 180, 180, 392).rect(LOUNGE_X - 90, 180, 180, 392, 6).rect(LOUNGE_X - 78, 192, 156, 380, 3);
+    s.rect(LOUNGE_X - 38, 222, 76, 92, 3.5).line(LOUNGE_X + 52, 390, LOUNGE_X + 66, 390, 7);
+    s.rect(LOUNGE_X - 16, 252, 26, 34, 3).circle(LOUNGE_X + 16, 268, 9, 3).line(LOUNGE_X - 8, 244, LOUNGE_X - 4, 232, 2.5).line(LOUNGE_X + 2, 244, LOUNGE_X + 6, 232, 2.5);
+    s.rect(LOUNGE_X - 120, 104, 240, 62, 4).text('Teachers\'', LOUNGE_X, 122, 22, INK).text('Lounge', LOUNGE_X, 148, 22, INK);
+    s.rect(LOUNGE_X + 110, 380, 120, 70, 3).text('Teachers', LOUNGE_X + 170, 402, 20, INK).text('only!', LOUNGE_X + 170, 428, 20, INK);
     // Right end
     s.line(HALL_W - 40, 46, HALL_W - 40, 572, 5).line(HALL_W - 40, 572, HALL_W, 720, 5).hatch(HALL_W - 40, 46, 40, 526, 16, 2, '#888');
   }
@@ -678,11 +700,12 @@
   // in front of him and not hiding, he sees you. Behind him you're safe.
   const jan = { x: JAN_HOME, face: -1, looking: false, next: 3, warn: 0, mopT: 0, saw: false, talked: false };
   let camX = 0;
-  let hallMode = 'walk'; // walk (going to class) | chase
+  let hallMode = 'walk'; // walk (going to class) | chase | free (the teacher's gone, chapter 2)
   let chase = null;      // { state, timer, hints }
 
   function startHall() {
     mode = 'hall'; hallMode = 'walk';
+    story.step = 'class'; story.spray = false; story.sprayed = false;
     P.x = 180; P.face = 1; P.hidden = null; P.frozen = false; P.target = null;
     jan.x = JAN_HOME; jan.looking = false; jan.talked = false; jan.saw = false; jan.warn = 0;
     teacherH.state = 'off'; teacherH.alpha = 0;
@@ -716,10 +739,10 @@
     if (P.hidden) { actNow = true; return; } // tap anywhere to come out
     const chasing = hallMode === 'chase';
     const spot = chasing && SPOTS.find((sp) => Math.abs(wx - sp.x) < sp.half);
+    const doorAt = [DOOR_X, ROOM11_X, LOUNGE_X, EXIT_X].find((x) => Math.abs(wx - x) < (x === EXIT_X ? 150 : 110));
     if (spot) P.target = { x: spot.x, act: true };
-    else if (!chasing && Math.abs(wx - DOOR_X) < 110) P.target = { x: DOOR_X, act: true };
-    else if (wx > EXIT_X - 260) P.target = { x: EXIT_X - 150, act: true };
-    else P.target = { x: clamp(wx, 90, EXIT_X - 150), act: false };
+    else if (doorAt && !(chasing && doorAt === DOOR_X)) P.target = { x: doorAt, act: true };
+    else P.target = { x: clamp(wx, 90, HALL_W - 150), act: false };
   }
 
   function updateHall(dt) {
@@ -737,7 +760,7 @@
       if (Math.abs(mx) > 0.1) P.face = Math.sign(mx);
     } else P.vx = 0;
     const before = P.x;
-    P.x = clamp(P.x + P.vx * dt, 90, EXIT_X - 150);
+    P.x = clamp(P.x + P.vx * dt, 90, HALL_W - 150);
     if (Math.abs(P.x - before) > 0.1) {
       const was = Math.floor(P.walkT * 4);
       P.walkT += dt;
@@ -752,7 +775,21 @@
       if (!dialog) {
         if (Math.abs(P.x - DOOR_X) < 90 && use()) { sfx.door(); fadeTo(startClass); }
         if (!jan.talked && Math.abs(P.x - jan.x) < 220) { jan.talked = true; bark('jan', 'Shouldn\'t you be in class?', 2.6); }
-        if (P.x >= EXIT_X - 160 && use()) { sfx.locked(); bark('you', 'It\'s locked. It\'s not home time yet!'); }
+        if (Math.abs(P.x - EXIT_X) < 150 && use()) { sfx.locked(); bark('you', 'It\'s locked. It\'s not home time yet!'); }
+        if (Math.abs(P.x - LOUNGE_X) < 90 && use()) { sfx.locked(); bark('you', 'The teachers\' lounge. Kids aren\'t allowed in there!'); }
+      }
+      return;
+    }
+
+    if (hallMode === 'free') {
+      if (!dialog) {
+        if (Math.abs(P.x - ROOM11_X) < 90 && use()) { sfx.door(); fadeTo(startRoom11); }
+        else if (Math.abs(P.x - LOUNGE_X) < 90 && use()) {
+          if (story.spray) { sfx.door(); fadeTo(startLounge); }
+          else { sfx.locked(); bark('you', 'The teachers\' lounge! I should find my best friend in Room 11 first.', 3); }
+        } else if (Math.abs(P.x - EXIT_X) < 150 && use()) { sfx.locked(); bark('you', 'It\'s locked. It\'s not home time yet!'); }
+        else if (Math.abs(P.x - DOOR_X) < 90 && use()) bark('you', 'No way am I going back in there!');
+        if (!jan.talked && Math.abs(P.x - jan.x) < 220) { jan.talked = true; bark('jan', 'Shouldn\'t you be in class?', 2.6); }
       }
       return;
     }
@@ -773,7 +810,8 @@
       if (use()) {
         if (P.hidden) { P.hidden = null; sfx.hide(); }
         else if (spot) { P.hidden = spot; P.x = spot.x; sfx.hide(); }
-        else if (P.x >= EXIT_X - 170) { sfx.locked(); bark('you', 'Locked! I need to hide!'); }
+        else if (Math.abs(P.x - EXIT_X) < 150) { sfx.locked(); bark('you', 'Locked! I need to hide!'); }
+        else if (Math.abs(P.x - LOUNGE_X) < 90) { sfx.locked(); bark('you', 'Teachers only! I need to hide!'); }
       }
       if (janitorSees()) {
         jan.saw = true; sfx.gasp();
@@ -808,15 +846,25 @@
         T.timer += dt;
         if (T.timer > 0.2 && T.timer - dt <= 0.2) bark('teacher', 'Hmm... where did she go?', 2.6);
         T.face = Math.floor(T.timer * 1.4) % 2 ? 1 : -1;
-        if (T.timer > 3.2) { T.state = 'leaving'; bark('teacher', 'Kids these days.', 2); }
+        if (T.timer > 3.2) { T.state = 'leaving'; bark('teacher', 'I need a break, I\'m going to the teachers\' lounge.', 3.6); }
       }
     } else if (T.state === 'leaving') {
-      T.face = -1; T.x -= 175 * dt; T.walkT += dt;
-      if (T.x <= DOOR_X + 4) { T.state = 'gone'; T.timer = 0; sfx.door(); }
+      // Off down the hall to the teachers' lounge.
+      const dx = LOUNGE_X - T.x;
+      T.face = Math.sign(dx) || 1; T.x += T.face * Math.min(Math.abs(dx), 175 * dt); T.walkT += dt;
+      if (Math.abs(dx) < 4) { T.state = 'gone'; T.timer = 0; sfx.door(); }
     } else if (T.state === 'gone') {
       T.alpha = Math.max(0, T.alpha - dt * 3);
       T.timer += dt;
-      if (T.timer > 1.2 && ch.state !== 'won') { ch.state = 'won'; sfx.win(); setTimeout(() => fadeTo(() => { mode = 'won'; wonSel = 0; }), 1200); }
+      if (T.timer > 1 && ch.state !== 'free') {
+        // Chapter 2 starts here.
+        ch.state = 'free'; hallMode = 'free'; story.step = 'friend';
+        if (P.hidden) { P.hidden = null; sfx.hide(); }
+        jan.looking = false; jan.warn = false;
+        sfx.win();
+        banner('He\'s gone! Go find your best friend in Room 11.', 5);
+        if (!save.ch2) { save.ch2 = true; writeSave(); }
+      }
     }
   }
 
@@ -886,6 +934,11 @@
       if (hallMode === 'walk') {
         if (Math.abs(P.x - DOOR_X) < 260) drawRing(c, DOOR_X, FLOOR - 10, 120, 30, t);
         if (Math.abs(P.x - DOOR_X) < 90) drawHideTag(c, DOOR_X, FLOOR - H_GIRL - 70, 'Go in', t);
+      } else if (hallMode === 'free') {
+        const goal = hallGoal();
+        drawRing(c, goal, FLOOR - 10, 120, 30, t);
+        if (Math.abs(P.x - goal) < 90) drawHideTag(c, goal, FLOOR - H_GIRL - 70, 'Go in', t);
+        else if (Math.abs(P.x - ROOM11_X) < 90) drawHideTag(c, ROOM11_X, FLOOR - H_GIRL - 70, 'Go in', t);
       } else if (chase.state === 'run' || chase.state === 'hidden') {
         const s = nearSpot();
         if (s) {
@@ -896,12 +949,29 @@
     }
 
     c.restore();
+    // An arrow at the edge of the screen pointing the way.
+    if (hallMode === 'free' && !dialog) {
+      const goal = hallGoal(), sx = goal - camX;
+      if (sx > W - 40) drawEdgeArrow(c, W - 70, 1, story.step === 'friend' ? 'Room 11' : 'Lounge');
+      else if (sx < 40) drawEdgeArrow(c, 70, -1, story.step === 'friend' ? 'Room 11' : 'Lounge');
+    }
     // Speech, in screen space so bubbles stay on screen.
     for (const b of barks) {
       const who = b.who === 'jan' ? [jan.x, FLOOR - H_JANITOR - 10] : b.who === 'teacher' ? [T.x, FLOOR - H_TEACHER - 10]
         : [P.x, P.hidden ? FLOOR - 300 : FLOOR - H_GIRL - 10];
       drawBubble(c, who[0] - camX, who[1], b.text);
     }
+  }
+  const hallGoal = () => (story.step === 'friend' ? ROOM11_X : LOUNGE_X);
+  function drawEdgeArrow(c, x, dir, label) {
+    const b = Math.sin(t * 6) * 8 * dir, y = 430;
+    c.save(); c.translate(x + b, y);
+    c.fillStyle = '#fff'; c.strokeStyle = INK; c.lineWidth = 6; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(-36 * dir, -18); c.lineTo(4 * dir, -18); c.lineTo(4 * dir, -38); c.lineTo(44 * dir, 0);
+    c.lineTo(4 * dir, 38); c.lineTo(4 * dir, 18); c.lineTo(-36 * dir, 18); c.closePath(); c.fill(); c.stroke();
+    c.font = font(26); c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.lineWidth = 7; c.strokeStyle = '#fff'; c.strokeText(label, -10 * dir, -66); c.fillStyle = INK; c.fillText(label, -10 * dir, -66);
+    c.restore();
   }
   // Two little eyes peeking out of the locker slits.
   function drawPeekEyes(c, x, y) {
@@ -943,7 +1013,7 @@
   // The classroom, seen from above like Zelda.
   const C = {};          // layout, rebuilt when the screen width changes
   const me = { x: 0, y: 0, face: 1, walkT: 0, seated: false, moving: false, path: null, act: null, stuck: 0 };
-  const teach = { x: 0, y: 0, back: false, spin: 0, walkT: 0, moving: false };
+  const teach = { x: 0, y: 0, back: false, spin: 0, walkT: 0, moving: false, route: null };
   let cls = { phase: 'enter', timer: 0, asleep: false, writing: 0, prompt: false, tries: 0 };
   const H_KID = 148, H_SEATED = 150, H_TEACH = 180, H_TEACH_BACK = 172;
 
@@ -962,6 +1032,7 @@
     C.seat = C.desks[2];
     C.door = { x: C.right, y: 525, half: 70 };
     C.sketch = buildClassSketch();
+    layoutRooms();
   }
 
   // Desks face the chalkboard, so you see each chair from behind, below its
@@ -971,8 +1042,8 @@
     s.fill(x - 26, y + 46, 52, 34).rect(x - 26, y + 46, 52, 34, 3.5).line(x - 26, y + 62, x + 26, y + 62, 2.5);
     s.line(x - 22, y + 80, x - 22, y + 104, 3.5).line(x + 22, y + 80, x + 22, y + 104, 3.5);
   }
-  function buildClassSketch() {
-    const s = new Sketch(33);
+  // Walls and floor of a room seen from above, with the door on the right.
+  function roomShell(s) {
     const { left: L, right: R, top: T, bottom: B } = C;
     // Top wall face
     s.line(30, 18, W - 30, 18, 5).line(L, T, R, T, 5);
@@ -989,6 +1060,11 @@
     // Floor tiles, light
     for (let x = L + 90; x < R; x += 90) s.line(x, T + 4, x, B - 4, 1.5, '#c8c8c8');
     for (let y = T + 90; y < B; y += 90) s.line(L + 4, y, R - 4, y, 1.5, '#c8c8c8');
+    return s;
+  }
+  function buildClassSketch() {
+    const s = roomShell(new Sketch(33));
+    const L = C.left;
     // Chalkboard on the top wall
     const b = C.board;
     s.fill(b.x, b.y, b.w, b.h, '#fff').rect(b.x, b.y, b.w, b.h, 6).rect(b.x + 8, b.y + 8, b.w - 16, b.h - 16, 2.5);
@@ -1050,21 +1126,30 @@
     const lines = by === 'jan'
       ? ['The janitor told me all about it. Back in your seat, young lady.', 'Now, where was I...']
       : ['Nice try. Back in your seat, young lady.', 'Now, where was I...'];
-    say('Teacher', lines, startWriting);
+    say('Mr. Richards', lines, startWriting);
   }
   function sitDown() { me.path = null; me.seated = true; me.x = C.seat.x; me.y = C.seat.y + SEAT_Y; me.face = 1; }
   function standUp() { me.seated = false; me.x = C.seat.x + 92; me.y = C.seat.y + SEAT_Y; me.face = 1; }
   const seatDist = () => Math.hypot(me.x - C.seat.x, me.y - (C.seat.y + 80));
   function startWriting() {
     cls.phase = 'turning'; cls.timer = 0;
+    // From his spot by the desk he walks around the front of it, not through it.
+    const b = C.teacherBoard, front = C.teacherDesk.y + C.teacherDesk.h + 24;
+    teach.route = teach.x < C.teacherDesk.x ? [[teach.x, front], [b.x, front], [b.x, b.y]] : [[b.x, b.y]];
   }
 
+  const deskBox = (d) => [d.x - 56, d.y - 30, 112, SEAT_Y + 4];
   function blocked(x, y) {
     if (x < C.left + 22 || x > C.right - 22 || y < C.top + 50 || y > C.bottom - 8) return true;
-    const boxes = C.desks.map((d) => [d.x - 56, d.y - 30, 112, SEAT_Y + 4]);
-    const td = C.teacherDesk; boxes.push([td.x - 10, td.y - 30, td.w + 20, td.h + 40]);
-    boxes.push([C.left, 500, 80, 180]); // bookshelf
-    boxes.push([teach.x - 30, teach.y - 30, 60, 40]);
+    let boxes;
+    if (mode === 'room11') boxes = R11.boxes;
+    else if (mode === 'lounge') boxes = LG.boxes.concat([[LG.rich.x - 30, LG.rich.y - 30, 60, 40]]);
+    else {
+      boxes = C.desks.map(deskBox);
+      const td = C.teacherDesk; boxes.push([td.x - 10, td.y - 30, td.w + 20, td.h + 40]);
+      boxes.push([C.left, 500, 80, 180]); // bookshelf
+      boxes.push([teach.x - 30, teach.y - 30, 60, 40]);
+    }
     for (const [bx, by, bw, bh] of boxes) if (x > bx && x < bx + bw && y > by && y < by + bh) return true;
     return false;
   }
@@ -1123,11 +1208,8 @@
     me.stuck = 0;
   }
 
-  function updateClass(dt) {
-    layoutClass();
-    cls.timer += dt;
-    if (tap && !dialog && ['enter', 'escape', 'writing'].includes(cls.phase)) classTap();
-    const free = !dialog && !me.seated && ['enter', 'escape', 'writing'].includes(cls.phase);
+  // Walking around a room from above: stick, keys, or following a tapped path.
+  function walkMe(dt, free) {
     me.moving = false;
     let mx = moveX, my = moveY;
     if (Math.hypot(mx, my) > 0.15 || !free) me.path = null;
@@ -1135,7 +1217,7 @@
       const [wx, wy] = me.path[0], d = Math.hypot(wx - me.x, wy - me.y);
       if (d < 6) {
         me.path.shift();
-        if (!me.path.length) { me.path = null; if (me.act === 'sit') actNow = true; }
+        if (!me.path.length) { me.path = null; if (me.act) actNow = true; }
       } else { mx = (wx - me.x) / d * Math.min(1, d / 20); my = (wy - me.y) / d * Math.min(1, d / 20); }
     }
     if (free) {
@@ -1153,6 +1235,13 @@
         const was = Math.floor(me.walkT * 4); me.walkT += dt; if (Math.floor(me.walkT * 4) !== was) sfx.step();
       }
     }
+  }
+
+  function updateClass(dt) {
+    layoutClass();
+    cls.timer += dt;
+    if (tap && !dialog && ['enter', 'escape', 'writing'].includes(cls.phase)) classTap();
+    walkMe(dt, !dialog && !me.seated && ['enter', 'escape', 'writing'].includes(cls.phase));
     const nearSeat = !me.seated && seatDist() < 130;
 
     switch (cls.phase) {
@@ -1160,7 +1249,7 @@
         if (nearSeat && use()) {
           sitDown(); sfx.ok();
           cls.phase = 'talk';
-          setTimeout(() => say('Teacher', [
+          setTimeout(() => say('Mr. Richards', [
             'All right, since there\'s only two of you today—sounds like there\'s some diarrhea going around—we\'ll just get started.',
             'I\'m going to give you 1000 tests.',
             'Let me just write this on the chalkboard.',
@@ -1169,10 +1258,14 @@
         break;
       case 'turning': {
         // Walk over to the board, then turn around to write.
-        const tx = C.teacherBoard.x, ty = C.teacherBoard.y, dx = tx - teach.x, dy = ty - teach.y, dist = Math.hypot(dx, dy);
-        teach.moving = dist > 4;
-        if (teach.moving) { teach.x += dx / dist * Math.min(dist, 160 * dt); teach.y += dy / dist * Math.min(dist, 160 * dt); teach.walkT += dt; }
-        else { teach.back = true; cls.phase = 'writing'; cls.timer = 0; }
+        if (!teach.route || !teach.route.length) teach.route = [[C.teacherBoard.x, C.teacherBoard.y]];
+        const [tx, ty] = teach.route[0], dx = tx - teach.x, dy = ty - teach.y, dist = Math.hypot(dx, dy);
+        teach.moving = true; teach.walkT += dt;
+        if (dist > 160 * dt) { teach.x += dx / dist * 160 * dt; teach.y += dy / dist * 160 * dt; }
+        else {
+          teach.x = tx; teach.y = ty; teach.route.shift();
+          if (!teach.route.length) { teach.moving = false; teach.route = null; teach.back = true; cls.phase = 'writing'; cls.timer = 0; }
+        }
         break;
       }
       case 'writing':
@@ -1197,9 +1290,9 @@
         teach.spin = Math.max(0, 1 - cls.timer / 0.35);
         if (cls.timer > 0.5) {
           cls.phase = 'question';
-          ask('Teacher', 'Where do you think you\'re going?', ['Sorry, sir, I\'ll sit back down.', 'I\'m escaping!'], (i) => {
+          ask('Mr. Richards', 'Where do you think you\'re going?', ['Sorry, sir, I\'ll sit back down.', 'I\'m escaping!'], (i) => {
             if (i === 0) {
-              say('Teacher', 'Good.', () => fadeTo(() => { sitDown(); cls.sorry = true; startWriting(); }));
+              say('Mr. Richards', 'Good.', () => fadeTo(() => { sitDown(); cls.sorry = true; startWriting(); }));
             } else {
               sfx.door();
               fadeTo(startChase);
@@ -1305,6 +1398,374 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Chapter 2: Room 11 (your best friend's class) and the teachers' lounge.
+  // More rooms from above, built like the classroom, with the door on the right.
+  const story = { step: 'class', spray: false, sprayed: false };
+  const R11 = {}, LG = {};
+  const H_FRIEND = 215, H_LOUNGE = 205;
+  const LOOK_R = 165; // how far a lounge teacher can see when they look up
+
+  function layoutRooms() {
+    const L = C.left, rw = C.right - C.left;
+    // Room 11: her drawing of the sleeping teacher at her desk and the sleeping
+    // kid goes in the top left; your friend sits in the middle.
+    R11.group = { x: L + 215, y: 478, h: 340 };
+    R11.friend = { x: L + Math.round(rw * 0.62), y: 455 };
+    R11.desks = [{ x: L + Math.round(rw * 0.42), y: 590 }, { x: L + Math.round(rw * 0.74), y: 590 }];
+    R11.boxes = [[L, 160, 410, 320], [R11.friend.x - 115, R11.friend.y - 80, 230, 92], ...R11.desks.map(deskBox)];
+    R11.sketch = roomShell(new Sketch(44));
+    {
+      const s = R11.sketch;
+      s.circle(W - 330, 80, 30, 4).line(W - 330, 80, W - 330, 60, 3).line(W - 330, 80, W - 315, 86, 3);
+      s.rect(W - 260, 40, 170, 90, 4).line(W - 175, 40, W - 175, 130, 3).line(W - 260, 85, W - 90, 85, 3);
+      s.rect(560, 46, 150, 70, 4).text('Room 11', 635, 81, 28, INK);
+    }
+
+    // The lounge: a coffee counter where Mr. Richards stands with his back to
+    // you, his comfy chair, and three teachers drinking coffee.
+    LG.counter = { x: L + 12, y: 168, w: 400, h: 56 };
+    LG.richHome = { x: L + 250, y: 296 };
+    LG.chair = { x: L + 165, y: 446 };
+    LG.watchers = [
+      { id: 'w0', img: 'lounge-table', x: L + Math.round(rw * 0.42), y: 458, h: 255, zy: -70, face: -1, markX: 56 },
+      { id: 'w1', img: 'lounge-woman', x: L + Math.round(rw * 0.69), y: 345, h: H_LOUNGE, zy: -10, face: 1, markX: 0 },
+      { id: 'w2', img: 'lounge-man', x: L + Math.round(rw * 0.53), y: 650, h: H_LOUNGE, zy: -20, face: 1, markX: 0 },
+    ];
+    const ch = LG.chair, [t0, w1, w2] = LG.watchers;
+    LG.boxes = [
+      [L, 160, LG.counter.w + 20, 82],
+      [ch.x - 58, ch.y - 52, 116, 112],
+      [t0.x - 95, t0.y - 120, 190, 128],
+      [w1.x - 30, w1.y - 34, 60, 42],
+      [w2.x - 30, w2.y - 34, 60, 42],
+      [L, 598, 250, 90], // sofa
+    ];
+    LG.sketch = roomShell(new Sketch(55));
+    {
+      const s = LG.sketch, k = LG.counter;
+      s.rect(560, 46, 220, 70, 4).text('Teachers\' Lounge', 670, 81, 26, INK);
+      s.rect(W - 260, 40, 170, 90, 4).line(W - 175, 40, W - 175, 130, 3).line(W - 260, 85, W - 90, 85, 3);
+      // Coffee counter with a coffee maker and mugs
+      s.fill(k.x, k.y - 40, k.w, k.h + 40).rect(k.x, k.y - 40, k.w, 40, 4).rect(k.x, k.y, k.w, k.h, 4);
+      s.rect(k.x + 30, k.y - 96, 70, 84, 4).rect(k.x + 44, k.y - 50, 42, 34, 3).line(k.x + 40, k.y - 70, k.x + 90, k.y - 70, 3);
+      s.rect(k.x + 300, k.y - 34, 26, 26, 3).circle(k.x + 333, k.y - 21, 7, 2.5).rect(k.x + 344, k.y - 34, 26, 26, 3);
+      s.text('COFFEE', k.x + 65, k.y - 110, 18, INK);
+      // Sofa in the corner
+      s.fill(C.left + 4, 604, 240, 78).rect(C.left + 4, 604, 240, 78, 4).rect(C.left + 4, 604, 240, 26, 4);
+      s.line(C.left + 84, 630, C.left + 84, 682, 3).line(C.left + 164, 630, C.left + 164, 682, 3);
+      // A plant by the door
+      s.poly([[C.right - 90, 640], [C.right - 40, 640], [C.right - 48, 682], [C.right - 82, 682]], true, 4);
+      for (let a = -1.1; a <= 1.1; a += 0.45) s.line(C.right - 65, 640, C.right - 65 + Math.sin(a) * 60, 640 - Math.cos(a) * 70, 3);
+    }
+    // His chair, seen from behind like the desk chairs: the seat, then the back
+    // drawn over whoever sits in it.
+    LG.seat = new Sketch(66).fill(ch.x - 48, ch.y - 48, 96, 46).rect(ch.x - 48, ch.y - 48, 96, 46, 4)
+      .rect(ch.x - 62, ch.y - 40, 14, 60, 3.5).rect(ch.x + 48, ch.y - 40, 14, 60, 3.5);
+    LG.back = new Sketch(67).fill(ch.x - 54, ch.y - 4, 108, 52).rect(ch.x - 54, ch.y - 4, 108, 52, 4.5)
+      .line(ch.x - 46, ch.y + 48, ch.x - 46, ch.y + 72, 4).line(ch.x + 46, ch.y + 48, ch.x + 46, ch.y + 72, 4)
+      .text('Mr. R', ch.x, ch.y + 22, 22, INK);
+  }
+
+  function enterRoom() {
+    layoutClass();
+    me.x = C.right - 80; me.y = C.door.y; me.face = -1; me.seated = false; me.path = null; me.act = null;
+    barks.length = 0; dialog = null;
+  }
+  function startRoom11() {
+    mode = 'room11'; enterRoom();
+    R11.leaving = false;
+    if (!story.spray) setTimeout(() => { if (mode === 'room11' && !story.spray) bark('friend', 'Psst! Over here!', 2.4); }, 700);
+  }
+  function startLounge() {
+    mode = 'lounge'; enterRoom();
+    LG.phase = story.sprayed ? 'out' : 'sneak'; LG.leaving = false; LG.t = 0; LG.tries = 0;
+    LG.rich = { x: LG.richHome.x, y: LG.richHome.y, seated: false, walkT: 0, moving: false };
+    resetLookers();
+    banner(story.sprayed ? 'Now sneak back out!' : 'Sneak past the teachers to Mr. Richards\' chair!', 4);
+    setTimeout(() => { if (mode === 'lounge' && LG.phase === 'sneak') bark('rich', 'Mmm, coffee.', 2); }, 900);
+  }
+  function resetLookers() {
+    for (const w of LG.watchers) { w.look = false; w.warn = false; }
+    LG.look = { who: -1, last: -1, phase: 'quiet', timer: 2.2 };
+  }
+  // Back to the hallway, outside a door, with the teacher gone.
+  function startFree(x) {
+    mode = 'hall'; hallMode = 'free';
+    P.x = x; P.face = -1; P.hidden = null; P.frozen = false; P.target = null; P.vx = 0;
+    jan.x = JAN_HOME; jan.looking = false; jan.warn = false; jan.saw = false;
+    teacherH.state = 'gone'; teacherH.alpha = 0;
+    chase = { state: 'free', timer: 0 };
+    camX = clamp(P.x - W * 0.4, 0, HALL_W - W);
+    barks.length = 0; dialog = null;
+  }
+  // Chapter 2 from the title screen.
+  function startChapter2() {
+    story.step = 'friend'; story.spray = false; story.sprayed = false;
+    startFree(DOOR_X + 150); P.face = 1;
+    banner('Mr. Richards went to the teachers\' lounge! Go find your best friend in Room 11.', 5);
+  }
+
+  // Leaving through the door on the right.
+  const atDoor = () => me.x > C.right - 62 && Math.abs(me.y - C.door.y) < C.door.half;
+  // Tap to walk; tap a person or thing to walk over and use it.
+  function roomTap(things) {
+    for (const th of things) if (Math.hypot(tap.x - th.x, tap.y - th.y) < th.r) { me.path = findPath(th.go[0], th.go[1]); me.act = th.act; me.stuck = 0; return; }
+    me.path = findPath(tap.x, tap.y); me.act = null; me.stuck = 0;
+  }
+
+  // --- Room 11
+  const friendSpot = () => [R11.friend.x - 150, R11.friend.y - 10];
+  const nearFriend = () => Math.hypot(me.x - R11.friend.x, (me.y - R11.friend.y) * 1.3) < 200;
+  function updateRoom11(dt) {
+    layoutClass();
+    if (gotItem) return;
+    if (tap && !dialog) roomTap([{ x: R11.friend.x, y: R11.friend.y - 100, r: 130, go: friendSpot(), act: 'talk' }]);
+    walkMe(dt, !dialog && !R11.leaving);
+    if (Math.floor(t / 3) !== Math.floor((t - dt) / 3)) sfx.snore();
+    if (dialog || R11.leaving) return;
+    if (nearFriend() && use()) {
+      if (story.spray) { bark('friend', 'Go get him!'); return; }
+      me.face = me.x < R11.friend.x ? 1 : -1;
+      say('Best friend', [
+        'Oh, you have Mr. Richards? He\'s the absolute worst.',
+        'I have Mr. Ben, he\'s pretty much as bad as Mr. Richards.',
+        'Anyway, here\'s something I want to give you so you can finally get revenge on Mr. Richards.',
+        'I hear he\'s going to give you 1000 tests!',
+      ], () => {
+        story.spray = true; story.step = 'lounge'; sfx.item();
+        gotItem = { t: 0, done() { banner('Go to the Teachers\' Lounge!', 4); bark('friend', 'Go get him!'); } };
+      });
+    }
+    if (atDoor()) { R11.leaving = true; sfx.door(); fadeTo(() => { startFree(ROOM11_X); if (story.spray) banner('Go to the Teachers\' Lounge!', 4); }); }
+  }
+  function drawRoom11(c) {
+    layoutClass();
+    R11.sketch.draw(c);
+    drawSprite(c, IMG.door, C.right - 30, C.door.y - C.door.half - 4, 150);
+    const items = [];
+    const g = R11.group, f = R11.friend;
+    items.push([g.y - 60, () => drawSprite(c, IMG.room11, g.x, g.y, g.h)]);
+    items.push([f.y, () => drawSprite(c, IMG.friend, f.x, f.y, H_FRIEND, { bob: Math.abs(Math.sin(t * 1.6)) * 2 })]);
+    for (const d of R11.desks) { items.push([d.y, () => drawDesk(c, d.x, d.y)]); items.push([d.y + SEAT_Y - 2, () => drawChair(c, d.x, d.y)]); }
+    items.push([me.y, () => drawMe(c)]);
+    items.sort((a, z) => a[0] - z[0]);
+    for (const [, fn] of items) fn();
+    // The teacher's asleep too.
+    const gw = IMG.room11 ? IMG.room11.width * g.h / IMG.room11.height : 340;
+    drawZzz(c, g.x - gw * 0.3, g.y - g.h * 0.72);
+    if (!dialog && !fadeDir && !gotItem) {
+      if (!story.spray) {
+        drawRing(c, f.x, f.y - 10, 130, 44, t);
+        if (nearFriend()) drawHideTag(c, f.x - 20, f.y - H_FRIEND - 50, 'Talk', t);
+      } else drawRing(c, C.door.x - 10, C.door.y, 60, 95, t);
+    }
+    drawRoomBarks(c, (who) => (who === 'friend' ? [f.x, f.y - H_FRIEND + 10] : [me.x, me.y - H_KID]));
+  }
+  function drawMe(c) {
+    drawSprite(c, IMG[hero], me.x, me.y, H_KID, {
+      flip: heroFlip(me.face), bob: me.moving ? Math.abs(Math.sin(me.walkT * 11)) * 5 : 0, tilt: me.moving ? Math.sin(me.walkT * 11) * 0.05 : 0,
+    });
+  }
+  function drawRoomBarks(c, pos) {
+    for (const bk of barks) { const p = pos(bk.who); drawBubble(c, p[0], p[1], bk.text); }
+  }
+
+  // --- The lounge
+  const nearChair = () => Math.hypot(me.x - LG.chair.x, me.y - (LG.chair.y + 30)) < 150;
+  function inSight(w) {
+    const dx = (me.x - w.x) / LOOK_R, dy = (me.y - (w.y + w.zy)) / (LOOK_R * 0.75);
+    return dx * dx + dy * dy < 1;
+  }
+  function updateLounge(dt) {
+    layoutClass();
+    LG.t += dt;
+    const sneaking = LG.phase === 'sneak' || LG.phase === 'out';
+    if (tap && !dialog && sneaking) {
+      roomTap(LG.phase === 'sneak' ? [{ x: LG.chair.x, y: LG.chair.y, r: 90, go: [LG.chair.x + 20, LG.chair.y + 96], act: 'spray' }] : []);
+    }
+    walkMe(dt, sneaking && !dialog && !LG.leaving);
+
+    // The teachers take turns looking up from their coffee, one at a time, with
+    // a "?" first so you know to get out of the way.
+    if (sneaking) {
+      const L = LG.look;
+      L.timer -= dt;
+      if (L.timer <= 0) {
+        if (L.phase === 'quiet') {
+          let i; do i = Math.floor(Math.random() * LG.watchers.length); while (i === L.last && LG.watchers.length > 1);
+          L.who = i; L.phase = 'warn'; L.timer = 0.9; LG.watchers[i].warn = true;
+        } else if (L.phase === 'warn') {
+          const w = LG.watchers[L.who]; w.warn = false; w.look = true; L.phase = 'look'; L.timer = 1.7 + Math.random() * 0.6;
+        } else {
+          LG.watchers[L.who].look = false; L.last = L.who; L.who = -1; L.phase = 'quiet'; L.timer = 1.8 + Math.random() * 1.2;
+        }
+      }
+      const seer = LG.watchers.find((w) => w.look && inSight(w));
+      if (seer && !LG.leaving) {
+        LG.phase = 'caught'; LG.tries++; sfx.gasp(); me.path = null;
+        bark(seer.id, 'Hey! No kids in the teachers\' lounge!', 2.4);
+        const after = story.sprayed ? 'out' : 'sneak';
+        setTimeout(() => fadeTo(() => {
+          // Back to the door, or back by the chair if you'd already sprayed it.
+          if (after === 'out') { me.x = LG.chair.x + 20; me.y = LG.chair.y + 96; } else { me.x = C.right - 80; me.y = C.door.y; }
+          me.path = null; LG.phase = after; barks.length = 0; resetLookers();
+        }), 1600);
+        return;
+      }
+    }
+
+    if (LG.phase === 'sneak' && nearChair() && use()) {
+      story.sprayed = true; LG.phase = 'out'; LG.sprayT = 0; sfx.spray(); me.path = null;
+      me.face = me.x < LG.chair.x ? 1 : -1;
+      banner('Pssssst! Now sneak back out!', 3.5);
+    }
+    if (LG.sprayT !== undefined) LG.sprayT += dt;
+    if (sneaking && !LG.leaving && atDoor()) {
+      if (LG.phase === 'out') startEnding();
+      else { LG.leaving = true; sfx.door(); fadeTo(() => startFree(LOUNGE_X)); }
+    }
+    if (LG.phase === 'ending') updateEnding(dt);
+  }
+
+  // You made it out: peek back in through the door and watch.
+  function startEnding() {
+    LG.phase = 'ending'; LG.t = 0; LG.step = 0;
+    me.x = C.right - 34; me.y = C.door.y; me.face = -1; me.path = null; me.moving = false;
+    for (const w of LG.watchers) { w.look = false; w.warn = false; }
+    sfx.door();
+  }
+  function updateEnding(dt) {
+    const R = LG.rich, ch = LG.chair, T = LG.t;
+    const at = (k, s) => { if (LG.step === k && T >= s) { LG.step++; return true; } return false; };
+    if (at(0, 0.8)) bark('rich', 'Ahh. Time to sit down with my coffee.', 2.4);
+    at(1, 2.6); // then he heads for his chair
+    if (LG.step >= 2 && !R.seated) {
+      const tx = ch.x, ty = ch.y - 20, dx = tx - R.x, dy = ty - R.y, d = Math.hypot(dx, dy);
+      R.moving = true; R.walkT += dt;
+      if (d > 130 * dt) { R.x += dx / d * 130 * dt; R.y += dy / d * 130 * dt; }
+      else { R.seated = true; R.moving = false; R.x = ch.x; R.y = ch.y + 26; LG.sitT = T; }
+    }
+    if (R.seated) {
+      if (at(2, LG.sitT + 0.5)) { sfx.fart(); LG.stinkT = 0; }
+      if (at(3, LG.sitT + 1.6)) { bark('w1', 'P.U.! You stink!', 3.2); bark('w2', 'P.U.! You stink!', 3.2); sfx.gasp(); }
+      if (at(4, LG.sitT + 2.4)) bark('w0', 'P.U.!', 2.6);
+      if (at(5, LG.sitT + 5.4)) fadeTo(() => { mode = 'won'; wonSel = 0; sfx.win(); });
+    }
+    if (LG.stinkT !== undefined) LG.stinkT += dt;
+  }
+
+  function drawLounge(c) {
+    layoutClass();
+    LG.sketch.draw(c);
+    drawSprite(c, IMG.door, C.right - 30, C.door.y - C.door.half - 4, 150);
+    const R = LG.rich, ch = LG.chair, ending = LG.phase === 'ending';
+    const items = [];
+    for (const w of LG.watchers) {
+      // In the ending they all turn to look at Mr. Richards.
+      const face = ending && R.seated ? Math.sign(ch.x - w.x) : w.face;
+      items.push([w.y, () => drawSprite(c, IMG[w.img], w.x, w.y, w.h, { flip: w.img !== 'lounge-table' && face < 0, tilt: w.look ? 0 : Math.sin(t * 1.5 + w.x) * 0.015 })]);
+    }
+    items.push([ch.y, () => {
+      LG.seat.draw(c);
+      if (R.seated) drawSprite(c, IMG['teacher-back'], R.x, R.y, H_TEACH_BACK);
+      LG.back.draw(c);
+    }]);
+    if (!R.seated) items.push([R.y, () => {
+      if (R.moving) drawSprite(c, IMG.teacher, R.x, R.y, H_TEACH, { bob: Math.abs(Math.sin(R.walkT * 9)) * 5 });
+      else drawSprite(c, IMG['teacher-back'], R.x, R.y, H_TEACH_BACK, { tilt: Math.sin(t * 2) * 0.02 });
+    }]);
+    items.push([me.y, () => drawMe(c)]);
+    items.sort((a, z) => a[0] - z[0]);
+    // Where a teacher who's looking up can see, drawn on the floor under everyone.
+    for (const w of LG.watchers) if (w.look || w.warn) drawLookZone(c, w);
+    for (const [, fn] of items) fn();
+
+    // Fart spray on the chair, and the stink once he sits down.
+    if (story.sprayed && mode === 'lounge') drawStink(c, ch.x, R.seated ? ch.y - 40 : ch.y - 10, LG.stinkT !== undefined ? 1 : 0.35, LG.stinkT || t, R.seated ? 70 : 30);
+    for (const w of LG.watchers) {
+      const mx = w.x + w.markX, my = w.y - w.h - 24;
+      if (LG.phase === 'caught' && w.look) drawMark(c, mx, my, '!');
+      else if (w.warn) drawMark(c, mx, my, '?');
+      else if (w.look) drawPeekEyes(c, mx, my);
+      else if (ending && LG.step >= 4) drawMark(c, mx, my, '!');
+    }
+    if (!dialog && !fadeDir) {
+      if (LG.phase === 'sneak') {
+        drawRing(c, ch.x, ch.y + 10, 90, 70, t);
+        if (nearChair()) drawHideTag(c, ch.x, ch.y - 120, 'Spray', t);
+      } else if (LG.phase === 'out') drawRing(c, C.door.x - 10, C.door.y, 60, 95, t);
+    }
+    drawRoomBarks(c, (who) => {
+      if (who === 'rich') return [R.x, R.y - H_TEACH + 10];
+      const w = LG.watchers.find((v) => v.id === who);
+      return w ? [w.x + w.markX, w.y - w.h + 10] : [me.x, me.y - H_KID];
+    });
+  }
+  function drawLookZone(c, w) {
+    c.save();
+    c.fillStyle = w.look ? (LG.phase === 'caught' ? 'rgba(0,0,0,.16)' : 'rgba(0,0,0,.08)') : 'rgba(0,0,0,.03)';
+    c.strokeStyle = 'rgba(0,0,0,.45)'; c.lineWidth = 3; c.setLineDash([12, 12]); c.lineDashOffset = -t * 30;
+    c.beginPath(); c.ellipse(w.x, w.y + w.zy, LOOK_R, LOOK_R * 0.75, 0, 0, 7); c.fill(); if (w.look) c.stroke();
+    c.restore();
+  }
+  // Green stink lines wiggling up, like a cartoon.
+  function drawStink(c, x, y, k, time, spread = 30) {
+    c.save(); c.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const p = (time * 0.5 + i / 3) % 1, h = 60 + k * 70;
+      c.globalAlpha = (1 - p) * (0.4 + k * 0.6);
+      c.strokeStyle = '#5c9a2a'; c.lineWidth = 4 + k * 2;
+      c.beginPath();
+      const bx = x + (i - 1) * spread;
+      for (let s = 0; s <= 10; s++) { const yy = y - p * h - s * (6 + k * 4); const xx = bx + Math.sin(s * 0.9 + time * 4 + i) * (6 + k * 6); s ? c.lineTo(xx, yy) : c.moveTo(xx, yy); }
+      c.stroke();
+    }
+    c.restore();
+  }
+  // The fart spray can, drawn like a marker doodle.
+  function drawSprayCan(c, x, y, s = 1) {
+    c.save(); c.translate(x, y); c.scale(s, s);
+    c.lineWidth = 4; c.strokeStyle = INK; c.lineJoin = 'round';
+    c.fillStyle = '#b7e07a'; roundRect(c, -22, -40, 44, 80, 8); c.fill(); c.stroke();
+    c.fillStyle = '#fff'; c.fillRect(-14, -48, 28, 10); c.strokeRect(-14, -48, 28, 10);
+    c.fillStyle = INK; c.fillRect(-4, -58, 10, 10); c.fillRect(6, -55, 8, 4);
+    c.font = font(11); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('FART', 0, -10); c.fillText('SPRAY', 0, 6);
+    c.restore();
+  }
+
+  // "You got the Fart Spray!"
+  let gotItem = null; // { t, done }
+  function updateGotItem(dt) {
+    gotItem.t += dt;
+    if (gotItem.t > 0.7 && (hit('confirm') || tap)) { const g = gotItem; gotItem = null; sfx.ok(); g.done && g.done(); }
+  }
+  function drawGotItem(c) {
+    const k = Math.min(1, gotItem.t * 4);
+    c.save();
+    c.fillStyle = `rgba(255,255,255,${0.7 * k})`; c.fillRect(0, 0, W, H);
+    c.globalAlpha = k;
+    const bw = 620, bh = 330, bx = (W - bw) / 2, by = 150;
+    c.fillStyle = '#fff'; c.strokeStyle = INK; c.lineWidth = 6;
+    roundRect(c, bx, by, bw, bh, 26); c.fill(); c.stroke();
+    drawSprayCan(c, W / 2, by + 120 + Math.sin(t * 4) * 6, 1.4);
+    drawStink(c, W / 2 + 34, by + 64, 0.3, t);
+    c.fillStyle = INK; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = font(42, 'normal'); c.fillText('You got the Fart Spray!', W / 2, by + 230);
+    c.font = font(26, 'normal'); c.fillText('Spray it on Mr. Richards\' chair.', W / 2, by + 280);
+    c.restore();
+    if (gotItem.t > 0.7) drawPrompts(c, [['confirm', 'OK']], W / 2, by + bh + 50, 'center', 36);
+  }
+  // A little box in the corner showing what you're carrying.
+  function drawInventory(c) {
+    if (!story.spray || story.sprayed && mode !== 'lounge') return;
+    c.save();
+    c.fillStyle = '#fff'; c.strokeStyle = INK; c.lineWidth = 4;
+    roundRect(c, 16, 14, 70, 86, 14); c.fill(); c.stroke();
+    c.restore();
+    drawSprayCan(c, 51, 64, 0.75);
+  }
+
+  // ---------------------------------------------------------------------------
   // Banner across the top, for "Escape!" moments.
   let bannerText = '', bannerT = 0, bannerDur = 0;
   function banner(text, dur) { bannerText = text; bannerT = 0; bannerDur = dur; }
@@ -1331,25 +1792,27 @@
   let wonSel = 0;
   const WON_ITEMS = [
     ['Play again', () => fadeTo(startHall)],
+    ['Play chapter 2 again', () => fadeTo(startChapter2)],
     ['Pick the other girl', () => { pickSel = hero === 'girl1' ? 1 : 0; mode = 'pick'; }],
     ['All games', () => { location.href = '/'; }],
   ];
   function updateWon() {
     if (hit('up')) { wonSel = (wonSel + WON_ITEMS.length - 1) % WON_ITEMS.length; sfx.move(); }
     if (hit('down')) { wonSel = (wonSel + 1) % WON_ITEMS.length; sfx.move(); }
-    const tapped = menuTap(360, WON_ITEMS.length);
+    const tapped = menuTap(330, WON_ITEMS.length);
     if (tapped >= 0) wonSel = tapped;
     if (hit('confirm') || tapped >= 0) { sfx.ok(); WON_ITEMS[wonSel][1](); }
   }
   function drawWon(c) {
     c.save();
     c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = INK;
-    c.font = font(84, 'normal'); c.fillText('You got away!', W / 2, 110);
-    c.font = font(34, 'normal'); c.fillText('The teacher walked right past you. ...for now.', W / 2, 190);
-    c.font = font(30, 'normal'); c.fillText('To be continued!', W / 2, 240);
-    drawSprite(c, IMG[hero], W / 2 - 330, 640, 380, { bob: Math.abs(Math.sin(t * 7)) * 18 });
-    drawSprite(c, IMG.cart, W / 2 + 340, 640, 220);
-    drawMenu(c, WON_ITEMS.map((i) => i[0]), wonSel, W / 2, 360);
+    c.font = font(84, 'normal'); c.fillText('You got revenge!', W / 2, 100);
+    c.font = font(34, 'normal'); c.fillText('Mr. Richards sat right in the Fart Spray. P.U.!', W / 2, 180);
+    c.font = font(30, 'normal'); c.fillText('To be continued!', W / 2, 230);
+    drawSprite(c, IMG[hero], W / 2 - 360, 640, 380, { bob: Math.abs(Math.sin(t * 7)) * 18 });
+    drawSprite(c, IMG.teacher, W / 2 + 370, 660, 400);
+    drawStink(c, W / 2 + 370, 250, 1, t);
+    drawMenu(c, WON_ITEMS.map((i) => i[0]), wonSel, W / 2, 330);
     c.restore();
   }
   function drawMenu(c, labels, sel, cx, y) {
@@ -1423,14 +1886,18 @@
     for (let i = barks.length - 1; i >= 0; i--) { barks[i].t += dt; if (barks[i].t > barks[i].dur) barks.splice(i, 1); }
     if (fadeDir > 0) return;
     if (paused) { updatePause(); return; }
-    const pauseTap = tapIn(W - 84, 0, 84, 84) && ['hall', 'class'].includes(mode);
-    if ((hit('pause') || pauseTap) && ['hall', 'class'].includes(mode) && !dialog) { paused = true; pauseSel = 0; sfx.blip(); return; }
+    const playing = ['hall', 'class', 'room11', 'lounge'].includes(mode);
+    const pauseTap = tapIn(W - 84, 0, 84, 84) && playing;
+    if ((hit('pause') || pauseTap) && playing && !dialog && !gotItem) { paused = true; pauseSel = 0; sfx.blip(); return; }
     if (pauseTap) tap = null;
+    if (gotItem) { updateGotItem(dt); return; }
     if (dialog) { updateDialog(dt); tap = null; if (mode === 'class') updateClass(dt); return; }
     if (mode === 'title') updateTitle();
     else if (mode === 'pick') updatePick();
     else if (mode === 'hall') updateHall(dt);
     else if (mode === 'class') updateClass(dt);
+    else if (mode === 'room11') updateRoom11(dt);
+    else if (mode === 'lounge') updateLounge(dt);
     else if (mode === 'won') updateWon();
   }
 
@@ -1447,16 +1914,22 @@
     else if (mode === 'hall') {
       drawHall(ctx);
       if (!dialog && !paused && device !== 'touch') {
-        const list = hallMode === 'walk' ? [['leftright', 'Walk'], ['pause', 'Menu']] : [['leftright', 'Run'], ['confirm', 'Hide'], ['pause', 'Menu']];
+        const list = hallMode !== 'chase' ? [['leftright', 'Walk'], ['pause', 'Menu']] : [['leftright', 'Run'], ['confirm', 'Hide'], ['pause', 'Menu']];
         drawPrompts(ctx, list, W - 24, H - 30, 'right', 30);
       }
     } else if (mode === 'class') {
       drawClass(ctx);
       if (!dialog && !paused && device !== 'touch' && (cls.phase === 'enter' || (cls.phase === 'escape' && !me.seated))) drawPrompts(ctx, [['move', 'Walk'], ['pause', 'Menu']], W - 24, H - 30, 'right', 30);
+    } else if (mode === 'room11' || mode === 'lounge') {
+      if (mode === 'room11') drawRoom11(ctx); else drawLounge(ctx);
+      const walking = mode === 'room11' || LG.phase === 'sneak' || LG.phase === 'out';
+      if (!dialog && !paused && !gotItem && device !== 'touch' && walking) drawPrompts(ctx, [['move', 'Walk'], ['pause', 'Menu']], W - 24, H - 30, 'right', 30);
     } else if (mode === 'won') drawWon(ctx);
-    if (device === 'touch' && ['hall', 'class'].includes(mode) && !paused) drawPauseButton(ctx);
+    if (['hall', 'room11', 'lounge'].includes(mode)) drawInventory(ctx);
+    if (device === 'touch' && ['hall', 'class', 'room11', 'lounge'].includes(mode) && !paused) drawPauseButton(ctx);
     drawBanner(ctx);
     if (dialog) drawDialog(ctx);
+    if (gotItem) drawGotItem(ctx);
     if (paused) drawPause(ctx);
     if (fade > 0) { ctx.fillStyle = `rgba(255,255,255,${fade})`; ctx.fillRect(0, 0, W, H); }
   }
@@ -1473,7 +1946,11 @@
 
   // For testing from the browser console.
   window.escapeSchool = {
-    get state() { return { mode, hallMode, hero, P: { ...P, hidden: P.hidden && P.hidden.kind }, me: { ...me }, cls: { ...cls }, chase: chase && { ...chase }, teacher: { ...teacherH }, jan: { ...jan }, dialog: dialog && dialog.pages[dialog.page], device }; },
-    startHall, startClass, startChase, setHero(h) { hero = h; },
+    get state() { return { mode, hallMode, hero, story: { ...story }, lounge: { phase: LG.phase, step: LG.step, rich: LG.rich && { ...LG.rich } }, teach: { ...teach }, P: { ...P, hidden: P.hidden && P.hidden.kind }, me: { ...me }, cls: { ...cls }, chase: chase && { ...chase }, teacher: { ...teacherH }, jan: { ...jan }, dialog: dialog && dialog.pages[dialog.page], device }; },
+    startHall, startClass, startChase, startChapter2, startRoom11, startLounge, startFree, setHero(h) { hero = h; },
+    layout: () => ({ C, R11, LG }), get W() { return W; }, setMe(x, y) { me.x = x; me.y = y; },
+    giveSpray() { story.spray = true; story.step = 'lounge'; },
+    hide(i) { P.hidden = SPOTS[i]; P.x = SPOTS[i].x; chase.state = 'hidden'; },
+    calm() { for (const w of LG.watchers) { w.look = false; w.warn = false; } LG.look.phase = 'quiet'; LG.look.timer = 99; },
   };
 })();
