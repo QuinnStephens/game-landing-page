@@ -51,15 +51,18 @@
     chair: { h: 160, tray: 'furniture', name: 'Chair' },
     fridge: { h: 270, tray: 'furniture', name: 'Fridge' },
     'table-and-chairs': { h: 200, tray: 'furniture', name: 'Table and Chairs' },
-    'baby-swing': { h: 220, tray: 'furniture', name: 'Baby Swing' },
+    'baby-swing': { h: 230, tray: 'furniture', name: 'Baby Swing', swing: { pivot: [0.55, 0.1], seats: [[0.6, 0.7]] } },
     toilet: { h: 140, tray: 'furniture', name: 'Toilet' },
     'restaurant-table': { h: 260, name: 'Table' },
     'zoo-bunny': { h: 130, name: 'Bunny' },
     'zoo-koala': { h: 180, name: 'Koala' },
     'zoo-lion': { h: 200, name: 'Lion' },
-    'park-climber': { h: 300, name: 'Climber' },
-    'school-desk': { h: 210, name: 'Desk' },
-    bookshelf: { h: 250, name: 'Bookshelf' },
+    // Swings: where they hang from and where each seat is, as fractions across and down the drawing.
+    // The slide: where a baby gets on at the top and comes off at the bottom
+    'park-swings': { h: 440, name: 'Swings', swing: { pivot: [0.55, 0.12], seats: [[0.36, 0.74], [0.74, 0.74]] } },
+    'park-slide': { h: 260, name: 'Slide', slide: { top: [0.38, 0.1], bottom: [1.02, 0.95] } },
+    'ball-pit': { h: 170, name: 'Ball Pit', pit: true },
+    'school-desk': { h: 210, name: 'Table' },
   };
   const TRAYS = [
     { id: 'items', name: 'Toys' },
@@ -71,11 +74,11 @@
   // (thing, x, y of its bottom middle). FLOOR is where the wall meets the floor.
   const FLOOR = 450;
   const PLACES = [
-    { id: 'home', name: 'Home', width: 2200, start: [['big-kid-bed', 420, 640], ['teddy-bear', 470, 548], ['table-and-chairs', 1000, 650], ['fridge', 1420, 560], ['toilet', 1900, 560], ['dollhouse', 1680, 650]] },
-    { id: 'park', name: 'Park', width: 2400, outside: true, start: [['park-climber', 900, 600], ['baby-swing', 1500, 580], ['block', 1200, 660]] },
-    { id: 'restaurant', name: 'Restaurant', width: 2200, start: [['waiter', 700, 620], ['restaurant-table', 1100, 660], ['table-and-chairs', 1650, 660], ['phone', 1960, 420]] },
-    { id: 'library', name: 'Library', width: 2200, start: [['bookshelf', 1150, 560], ['chair', 820, 660], ['book', 900, 690], ['book', 1500, 680]] },
-    { id: 'school', name: 'School', width: 2200, start: [['teacher', 1100, 600], ['school-desk', 700, 680], ['school-desk', 1500, 680], ['block', 1850, 640]] },
+    { id: 'home', name: 'Home', width: 2200, start: [['big-kid-bed', 420, 640], ['teddy-bear', 470, 548], ['baby-swing', 780, 600], ['table-and-chairs', 1100, 650], ['fridge', 1420, 560], ['toilet', 1900, 560], ['dollhouse', 1680, 650]] },
+    { id: 'park', name: 'Park', width: 2400, outside: true, start: [['park-slide', 620, 600], ['ball-pit', 900, 660], ['park-swings', 1450, 600], ['block', 1900, 660]] },
+    { id: 'restaurant', name: 'Restaurant', width: 2200, start: [['waiter', 700, 620], ['school-desk', 1100, 660], ['table-and-chairs', 1650, 660], ['phone', 1960, 420]] },
+    { id: 'library', name: 'Library', width: 2200, start: [['chair', 820, 660], ['book', 900, 690], ['book', 1500, 680]] },
+    { id: 'school', name: 'School', width: 2200, start: [['teacher', 1100, 600], ['restaurant-table', 680, 680], ['restaurant-table', 1520, 680], ['block', 1850, 640]] },
     { id: 'zoo', name: 'Zoo', width: 2600, outside: true, start: [['zookeeper', 520, 640], ['zoo-lion', 1000, 600], ['zoo-koala', 1560, 600], ['zoo-bunny', 2100, 640]] },
   ];
 
@@ -337,10 +340,12 @@
   function startingThings(place) {
     return place.start.map(([kind, x, y]) => ({ id: nextId++, kind, x, y }));
   }
+  const SAVE_VERSION = 2;
   let world = {};
+  let savedVersion = SAVE_VERSION;
   try {
     const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
-    if (saved && saved.places) world = saved.places;
+    if (saved && saved.places) { world = saved.places; savedVersion = saved.v || 1; }
     if (saved && Array.isArray(saved.characters)) {
       characters = saved.characters.filter((ch) => ch && Number.isInteger(ch.id)).map((ch) => ({ id: ch.id, look: cleanLook(ch.look) }));
       nextCharId = Math.max(0, ...characters.map((ch) => ch.id)) + 1;
@@ -348,18 +353,43 @@
   } catch { /* nothing saved */ }
   for (const p of PLACES) {
     if (!Array.isArray(world[p.id])) world[p.id] = startingThings(p);
-    world[p.id] = world[p.id].filter((t) => (t.kind === 'char' ? charById(t.char) : THINGS[t.kind]));
+    const list = world[p.id];
+    // Who's on a swing or in the ball pit is saved as the place in this list of what they're on
+    for (const t of list) t.id = nextId++;
+    for (const t of list) {
+      const host = t.on && list[t.on.i];
+      t.on = host ? { id: host.id, seat: t.on.seat || 0, pit: !!t.on.pit } : null;
+    }
+    world[p.id] = list.filter((t) => (t.kind === 'char' ? charById(t.char) : THINGS[t.kind]));
+    if (savedVersion < 2) upgradeFromV1(p, world[p.id]);
     // The teacher, zookeeper and waiter are always there
     for (const [kind, x, y] of p.start) {
-      if (THINGS[kind].person && !world[p.id].some((t) => t.kind === kind)) world[p.id].push({ kind, x, y });
+      if (THINGS[kind].person && !world[p.id].some((t) => t.kind === kind)) world[p.id].push({ id: nextId++, kind, x, y });
     }
-    for (const t of world[p.id]) t.id = nextId++;
+  }
+  // Violeta's first changes: the school and restaurant swap tables, the baby swing moves home,
+  // and the park gets its slide, ball pit and swings
+  function upgradeFromV1(place, list) {
+    const swap = { school: ['school-desk', 'restaurant-table'], restaurant: ['restaurant-table', 'school-desk'] }[place.id];
+    if (swap) for (const t of list) if (t.kind === swap[0]) t.kind = swap[1];
+    if (place.id === 'park') {
+      for (let i = list.length - 1; i >= 0; i--) if (list[i].kind === 'baby-swing') list.splice(i, 1);
+    }
+    for (const [kind, x, y] of place.start) {
+      if (['park-slide', 'ball-pit', 'park-swings', 'baby-swing'].includes(kind) && !list.some((t) => t.kind === kind)) list.push({ id: nextId++, kind, x, y });
+    }
   }
   function writeSave() {
     try {
       const places = {};
-      for (const id in world) places[id] = world[id].map(({ kind, char, x, y, flip }) => ({ kind, char, x: Math.round(x), y: Math.round(y), flip: !!flip }));
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ places, characters }));
+      for (const id in world) {
+        const list = world[id];
+        places[id] = list.map(({ kind, char, x, y, flip, on }) => {
+          const i = on ? list.findIndex((h) => h.id === on.id) : -1;
+          return { kind, char, x: Math.round(x), y: Math.round(y), flip: !!flip, on: i >= 0 ? { i, seat: on.seat, pit: on.pit } : undefined };
+        });
+      }
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, places, characters }));
     } catch { /* storage full or blocked */ }
   }
 
@@ -682,6 +712,18 @@
     if (/28de|valve|steam/i.test(id)) return 'deck';
     return 'xbox';
   }
+  // Steam Input and some adapters hide which controller it really is, so the pause menu can set it
+  const PAD_STYLES = [['auto', 'Automatic'], ['xbox', 'Xbox'], ['ps', 'PlayStation'], ['nintendo', 'Switch'], ['deck', 'Steam Deck']];
+  const PAD_STYLE_KEY = 'my-kingdom-pad-style';
+  let padStyle = 'auto';
+  try { const v = localStorage.getItem(PAD_STYLE_KEY); if (PAD_STYLES.some(([id]) => id === v)) padStyle = v; } catch { /* none */ }
+  let lastPadId = '';
+  function cyclePadStyle() {
+    const i = PAD_STYLES.findIndex(([id]) => id === padStyle);
+    padStyle = PAD_STYLES[(i + 1) % PAD_STYLES.length][0];
+    try { localStorage.setItem(PAD_STYLE_KEY, padStyle); } catch { /* fine */ }
+    if (usingPad() || padStyle !== 'auto') device = padStyle !== 'auto' ? padStyle : padFamily(lastPadId);
+  }
   const usingPad = () => !['keyboard', 'mouse', 'touch'].includes(device);
   const usingHand = () => device === 'keyboard' || usingPad();
 
@@ -712,8 +754,9 @@
       if (sy < -0.5) padHeld.up = true;
       if (sy > 0.5) padHeld.down = true;
       if (used) {
+        lastPadId = gp.id;
         const was = device;
-        device = padFamily(gp.id);
+        device = padStyle !== 'auto' ? padStyle : padFamily(gp.id);
         if (was === 'mouse' || was === 'touch') handFromPointer();
         unlockAudio();
       }
@@ -763,6 +806,10 @@
     away() { tone(700, 0.15, 'sine', 0.09, 200); },
     door() { tone(300, 0.15, 'triangle', 0.08, 500); tone(500, 0.15, 'triangle', 0.08, 700, 0.12); },
     nope() { tone(220, 0.08, 'square', 0.06); tone(200, 0.1, 'square', 0.06, 0, 0.1); },
+    swing() { tone(392, 0.12, 'triangle', 0.08, 587); tone(587, 0.15, 'triangle', 0.07, 784, 0.1); },
+    climb() { [0, 0.15, 0.3, 0.45].forEach((d, i) => tone(500 + i * 90, 0.06, 'triangle', 0.06, 0, d)); },
+    slide() { tone(1100, 0.8, 'sine', 0.08, 260); },
+    plop() { [0, 0.07, 0.14, 0.2].forEach((d) => tone(300 + Math.random() * 500, 0.08, 'sine', 0.07, 0, d)); },
   };
 
   // ---------------------------------------------------------------------------
@@ -829,9 +876,11 @@
   }
   // The thing drawn on top at a spot in the room (people and things in front are checked first)
   function thingAt(wx, wy) {
-    const list = drawOrder().slice().reverse();
+    // Riders come first, so a baby in the ball pit can be lifted out instead of the pit
+    const sorted = drawOrder().slice().reverse();
+    const list = [...sorted.filter((t) => t.on), ...sorted.filter((t) => !t.on)];
     for (const t of list) {
-      if (t === hand.holding || (drag && drag.thing === t)) continue;
+      if (t === hand.holding || (drag && drag.thing === t) || t.sliding) continue;
       const { w, h } = sizeOf(t);
       const lx = t.flip ? (t.x + w / 2 - wx) / w : (wx - (t.x - w / 2)) / w;
       const ly = (wy - (t.y - h)) / h;
@@ -859,6 +908,7 @@
 
   // Hold it from wherever the hand grabbed it
   function pickUp(t, w) {
+    getOff(t);
     hand.holding = t;
     hand.offX = t.x - w.x;
     hand.offY = t.y - w.y;
@@ -871,6 +921,7 @@
     keepInRoom(t);
     bounces.set(t, performance.now());
     sfx.drop();
+    settle(t);
     writeSave();
   }
   function putAway(t) {
@@ -883,6 +934,8 @@
       return false;
     }
     const list = things();
+    // Anyone on it gets off where they are
+    for (const r of ridersOf(t)) { getOff(r); r.y = Math.max(r.y, t.y); }
     list.splice(list.indexOf(t), 1);
     if (hand.holding === t) hand.holding = null;
     sfx.away();
@@ -896,6 +949,132 @@
     sfx.add();
     return t;
   }
+  // ---------------------------------------------------------------------------
+  // Swings, the slide and the ball pit. Characters and people ride the swings; only babies
+  // go down the slide, and land in the ball pit if there's one nearby.
+
+  const canRide = (t) => t.kind === 'char' || !!defOf(t).person;
+  const isBaby = (t) => t.kind === 'char' && charById(t.char)?.look.age === 'baby';
+  const hostOf = (t) => (t.on ? things().find((h) => h.id === t.on.id) : null);
+  const ridersOf = (host) => things().filter((t) => t.on && t.on.id === host.id);
+  // A point on a thing's drawing, given as fractions across and down it
+  function pointOn(host, [fx, fy]) {
+    const { w, h } = sizeOf(host);
+    return { x: host.x + (host.flip ? 0.5 - fx : fx - 0.5) * w, y: host.y - h + fy * h };
+  }
+  // Dropped with its feet somewhere on the drawing (forgiving)
+  function droppedOn(t, host) {
+    const { w, h } = sizeOf(host);
+    return host !== t && Math.abs(t.x - host.x) < w * 0.6 && t.y > host.y - h - 30 && t.y < host.y + 80;
+  }
+  const pitDepth = (pit) => sizeOf(pit).h * 0.55; // how far into the balls a baby sits
+  function getOff(t) {
+    t.on = null;
+    t.sliding = null;
+  }
+  function settle(t) {
+    getOff(t);
+    if (!canRide(t)) return;
+    const list = things();
+    for (const host of list) {
+      const sw = defOf(host).swing;
+      if (!sw || !droppedOn(t, host)) continue;
+      const taken = ridersOf(host).map((o) => o.on.seat);
+      const free = sw.seats.map((_, i) => i).filter((i) => !taken.includes(i));
+      if (!free.length) continue;
+      free.sort((a, b) => Math.abs(pointOn(host, sw.seats[a]).x - t.x) - Math.abs(pointOn(host, sw.seats[b]).x - t.x));
+      t.on = { id: host.id, seat: free[0], pit: false };
+      t.swingFrom = performance.now();
+      positionRider(t, host);
+      sfx.swing();
+      return;
+    }
+    for (const host of list) {
+      if (!defOf(host).slide || !droppedOn(t, host)) continue;
+      if (isBaby(t)) startSlide(t, host);
+      else { showToast('The slide is just for babies!'); sfx.nope(); }
+      return;
+    }
+    if (isBaby(t)) {
+      const pit = list.find((host) => defOf(host).pit && droppedOn(t, host));
+      if (pit) intoPit(t, pit, t.x - pit.x);
+    }
+  }
+  function intoPit(t, pit, offset) {
+    const w = sizeOf(pit).w;
+    t.on = { id: pit.id, seat: Math.round(clamp(offset, -w * 0.28, w * 0.28)), pit: true };
+    positionRider(t, pit);
+    bounces.set(t, performance.now());
+    sfx.plop();
+  }
+  // Riders keep their x, y where they're drawn (before swinging), so they can be grabbed there
+  function positionRider(t, host) {
+    if (t.on.pit) {
+      t.x = host.x + t.on.seat;
+      t.y = host.y - pitDepth(host);
+    } else {
+      const seat = pointOn(host, defOf(host).swing.seats[t.on.seat]);
+      t.x = seat.x;
+      t.y = seat.y + sizeOf(t).h * 0.22;
+    }
+  }
+  function startSlide(t, slide) {
+    const def = defOf(slide).slide;
+    const top = pointOn(slide, def.top), bottom = pointOn(slide, def.bottom);
+    // The nearest ball pit to the bottom of the slide catches the baby
+    let pit = null, best = 900;
+    for (const host of things()) {
+      if (!defOf(host).pit) continue;
+      const d = Math.hypot(host.x - bottom.x, host.y - bottom.y);
+      if (d < best) { best = d; pit = host; }
+    }
+    t.sliding = { t0: performance.now(), from: { x: t.x, y: t.y }, top, bottom, pit: pit ? pit.id : null };
+    sfx.climb();
+  }
+  const CLIMB_MS = 700, SLIDE_MS = 900, HOP_MS = 600;
+  function updateRides(now) {
+    for (const t of things()) {
+      if (t.sliding) {
+        const s = t.sliding, k = now - s.t0, h = sizeOf(t).h;
+        if (k < CLIMB_MS) {
+          // Up the ladder
+          const f = k / CLIMB_MS;
+          t.x = s.from.x + (s.top.x - s.from.x) * f;
+          t.y = s.from.y + (s.top.y + h * 0.3 - s.from.y) * f - Math.abs(Math.sin(f * Math.PI * 4)) * 14;
+          s.angle = 0;
+        } else if (k < CLIMB_MS + SLIDE_MS) {
+          // Wheee, faster and faster
+          if (!s.whee) { s.whee = true; sfx.slide(); }
+          const f = (k - CLIMB_MS) / SLIDE_MS, e = f * f;
+          t.x = s.top.x + (s.bottom.x - s.top.x) * e;
+          t.y = s.top.y + h * 0.3 + (s.bottom.y - s.top.y - h * 0.3) * e;
+          s.angle = 0.35;
+        } else {
+          const pit = s.pit && things().find((p) => p.id === s.pit);
+          const land = pit ? { x: pit.x, y: pit.y - pitDepth(pit) } : { x: s.bottom.x + 60, y: s.bottom.y };
+          const f = Math.min(1, (k - CLIMB_MS - SLIDE_MS) / HOP_MS);
+          t.x = s.bottom.x + (land.x - s.bottom.x) * f;
+          t.y = s.bottom.y + (land.y - s.bottom.y) * f - Math.sin(f * Math.PI) * 110;
+          s.angle = 0.35 * (1 - f) + f * 0.6 * Math.sin(f * Math.PI);
+          if (f >= 1) {
+            t.sliding = null;
+            if (pit) intoPit(t, pit, 0);
+            else { keepInRoom(t); bounces.set(t, now); sfx.drop(); }
+            writeSave();
+          }
+        }
+      } else if (t.on) {
+        const host = hostOf(t);
+        if (host) positionRider(t, host);
+        else t.on = null;
+      }
+    }
+  }
+  // A rider swings back and forth under where the swing hangs from
+  function swingAngle(t, now) {
+    return Math.sin((now - (t.swingFrom || 0)) / 520 + t.id) * 0.42;
+  }
+
   function resetPlace() {
     world[game.place.id] = startingThings(game.place);
     hand.holding = null;
@@ -969,14 +1148,15 @@
   }
   const inBox = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   function pauseItems() {
+    const buttons = 'Buttons: ' + PAD_STYLES.find(([id]) => id === padStyle)[1];
     return game.screen === 'inside'
-      ? ['Keep playing', game.paused?.confirmReset ? 'Tap again to start over' : `Start the ${game.place.name.toLowerCase()} over`, 'Back to town', 'Main menu']
-      : ['Keep playing', 'Main menu'];
+      ? ['Keep playing', 'Make a character', buttons, game.paused?.confirmReset ? 'Press again to start over' : `Start the ${game.place.name.toLowerCase()} over`, 'Back to town', 'Main menu']
+      : ['Keep playing', buttons, 'Main menu'];
   }
   function pauseRows() {
     const items = pauseItems();
-    const y0 = VH / 2 - (items.length * 80) / 2 + 30;
-    return items.map((label, i) => ({ label, x: W / 2 - 260, y: y0 + i * 80, w: 520, h: 66 }));
+    const y0 = VH / 2 - (items.length * 74) / 2 + 30;
+    return items.map((label, i) => ({ label, x: W / 2 - 260, y: y0 + i * 74, w: 520, h: 62 }));
   }
   function choosePause(i) {
     const label = pauseItems()[i];
@@ -984,6 +1164,8 @@
     if (label === 'Keep playing') game.paused = null;
     else if (label === 'Main menu') goToMainMenu();
     else if (label === 'Back to town') { game.paused = null; backToTown(); }
+    else if (label === 'Make a character') { game.paused = null; openCreator(); }
+    else if (label.startsWith('Buttons')) cyclePadStyle();
     else if (game.paused.confirmReset) { game.paused = null; resetPlace(); showToast('All fresh!'); }
     else game.paused.confirmReset = true;
   }
@@ -1043,6 +1225,7 @@
     const w = toWorld(p.x, p.y);
     const t = thingAt(w.x, w.y);
     if (t) {
+      getOff(t);
       drag = { kind: 'thing', thing: t, offX: w.x - t.x, offY: w.y - t.y, pointerId: e.pointerId, startX: p.x, startY: p.y };
       // Picked things come to the front of their spot
       sfx.pick();
@@ -1104,6 +1287,7 @@
       keepInRoom(t);
       bounces.set(t, performance.now());
       sfx.drop();
+      settle(t);
       writeSave();
     }
   }
@@ -1271,7 +1455,7 @@
       drawHuman(c, look);
     }
     c.restore();
-    drawUiButton(c, UI.creatorBack(), '← Back', { size: 28 });
+    drawUiButton(c, UI.creatorBack(), usingHand() ? 'Back' : '← Back', { size: 28, action: 'back' });
     drawFullscreenButton(c);
     drawPrompts(c, [['move', 'Move'], ['confirm', 'Choose'], ['back', 'Back'], ...(usingPad() ? [['pause', 'Done']] : [])], W / 2, 34, 'center', 30);
   }
@@ -1329,11 +1513,22 @@
     }
 
     // Inside a place
+    updateRides(now);
     if (game.tray) {
       const list = trayList(game.tray.tab);
       const s = stepped(now);
-      if (s && s.dx) { game.tray.index = clamp(game.tray.index + s.dx, 0, list.length - 1); showTraySlot(game.tray.index); sfx.move(); }
-      const step = hit('nextTab') || (s && s.dy > 0) ? 1 : hit('prevTab') || (s && s.dy < 0) ? -1 : 0;
+      if (s && s.dx) {
+        // Off either end of a drawer goes on to the next drawer
+        const i = game.tray.index + s.dx;
+        if (i < 0 || i >= list.length) {
+          const tab = (game.tray.tab + s.dx + TRAYS.length) % TRAYS.length;
+          setTrayTab(tab);
+          game.tray.index = i < 0 ? trayList(tab).length - 1 : 0;
+        } else game.tray.index = i;
+        showTraySlot(game.tray.index);
+        sfx.move();
+      }
+      const step = hit('nextTab') || (s && !s.dx && s.dy > 0) ? 1 : hit('prevTab') || (s && !s.dx && s.dy < 0) ? -1 : 0;
       if (step) { setTrayTab((game.tray.tab + step + TRAYS.length) % TRAYS.length); sfx.move(); }
       if (hit('confirm')) {
         const entry = list[game.tray.index];
@@ -1484,13 +1679,19 @@
   }
 
   // A round, hand-drawn looking button with words or a picture
-  function drawUiButton(c, b, label, { active = false, color = '#ffffff', size = 30 } = {}) {
+  // With a controller or keys, the button that does the same thing is drawn on it too
+  function drawUiButton(c, b, label, { active = false, color = '#ffffff', size = 30, action = null } = {}) {
     c.save();
     c.fillStyle = active ? '#fff3a0' : color;
     c.strokeStyle = PENCIL; c.lineWidth = 5;
     roundRect(c, b.x, b.y, b.w, b.h, 22); c.fill(); c.stroke();
+    let textX = b.x + b.w / 2;
+    if (action && usingHand()) {
+      const bw = drawButton(c, action, b.x + 12, b.y + b.h / 2, 30);
+      textX = b.x + 12 + bw + (b.w - 12 - bw) / 2;
+    }
     c.font = font(size); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = PENCIL;
-    c.fillText(label, b.x + b.w / 2, b.y + b.h / 2 + 2);
+    c.fillText(label, textX, b.y + b.h / 2 + 2);
     c.restore();
   }
   function drawFullscreenButton(c) {
@@ -1506,7 +1707,7 @@
     c.stroke(); c.restore();
   }
 
-  function drawThing(c, t, x, y, now, lifted = false) {
+  function drawThing(c, t, x, y, now, lifted = false, { shadow = true, tilt = 0 } = {}) {
     const img = artOf(t);
     const { w, h } = sizeOf(t);
     c.save();
@@ -1521,9 +1722,12 @@
     }
     if (lifted) rot = Math.sin(now / 120) * 0.05;
     else if (defOf(t).person || t.kind === 'char') rot = Math.sin(now / 700 + t.id) * 0.025;
+    rot += tilt;
     // Shadow on the floor
-    c.fillStyle = 'rgba(40, 30, 80, 0.13)';
-    c.beginPath(); c.ellipse(0, lifted ? 26 : -2, w * 0.38, 12, 0, 0, 7); c.fill();
+    if (shadow) {
+      c.fillStyle = 'rgba(40, 30, 80, 0.13)';
+      c.beginPath(); c.ellipse(0, lifted ? 26 : -2, w * 0.38, 12, 0, 0, 7); c.fill();
+    }
     if (lifted) c.translate(0, -16);
     c.rotate(rot);
     c.scale((t.flip ? -1 : 1) * (lifted ? 1.06 : 1) * (2 - sy), sy * (lifted ? 1.06 : 1));
@@ -1579,7 +1783,7 @@
       c.fillStyle = PENCIL; c.fillText(p.name, s.cx, s.labelY);
       c.restore();
     });
-    drawUiButton(c, UI.back(), 'Menu', { size: 28 });
+    drawUiButton(c, UI.back(), 'Menu', { size: 28, action: 'back' });
     drawFullscreenButton(c);
     drawPrompts(c, [['move', 'Pick'], ['confirm', 'Go inside'], ['back', 'Main menu']], W / 2, VH - 36, 'center');
   }
@@ -1600,9 +1804,27 @@
     c.save();
     c.translate(-game.camX, oy);
     const dragging = drag && (drag.kind === 'thing' || drag.kind === 'new') ? drag.thing : null;
+    const loose = (t) => t !== hand.holding && t !== dragging;
     for (const t of drawOrder()) {
-      if (t === hand.holding || t === dragging) continue;
+      if (!loose(t) || t.on || t.sliding) continue;
+      // Babies in the ball pit sit behind its front; swing riders hang in front of their swing
+      const riders = ridersOf(t).filter(loose);
+      for (const r of riders) if (r.on.pit) drawThing(c, r, r.x, r.y, now, false, { shadow: false });
       drawThing(c, t, t.x, t.y, now);
+      for (const r of riders) {
+        if (r.on.pit) continue;
+        const pivot = pointOn(t, defOf(t).swing.pivot);
+        c.save();
+        c.translate(r.x, pivot.y);
+        c.rotate(swingAngle(r, now));
+        drawThing(c, r, 0, r.y - pivot.y, now, false, { shadow: false });
+        c.restore();
+      }
+    }
+    for (const t of things()) {
+      if (!t.sliding || !loose(t)) continue;
+      drawThing(c, t, t.x, t.y, now, false, { shadow: false, tilt: (t.flip ? 1 : -1) * -(t.sliding.angle || 0) });
+      if (t.sliding.whee) words(c, 'Wheee!', t.x, t.y - sizeOf(t).h - 24, 34, '#e0408a');
     }
     const lifted = hand.holding || dragging;
     if (lifted) drawThing(c, lifted, lifted.x, lifted.y, now, true);
@@ -1622,7 +1844,7 @@
     c.strokeText(place.name, W / 2, 48); c.fillStyle = PENCIL; c.fillText(place.name, W / 2, 48);
     c.restore();
 
-    drawUiButton(c, UI.back(), '← Town', { size: 28 });
+    drawUiButton(c, UI.back(), usingHand() ? 'Town' : '← Town', { size: 28, action: 'back' });
     drawFullscreenButton(c);
 
     const holdingSomething = hand.holding || dragging;
@@ -1644,7 +1866,7 @@
     }
 
     if (game.tray) drawTray(c, now);
-    else if (!holdingSomething) drawUiButton(c, UI.addButton(), '+ Add', { size: 34, color: '#fff3a0' });
+    else if (!holdingSomething) drawUiButton(c, UI.addButton(), usingHand() ? 'Add' : '+ Add', { size: 34, color: '#fff3a0', action: 'add' });
 
     if (!game.tray && !game.paused) {
       const list = hand.holding

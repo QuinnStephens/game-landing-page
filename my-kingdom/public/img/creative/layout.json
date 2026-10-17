@@ -51,15 +51,19 @@
   "w": 279,
   "h": 382
  },
- "park-climber": {
-  "w": 483,
-  "h": 422
+ "park-slide": {
+  "w": 274,
+  "h": 342
+ },
+ "park-swings": {
+  "w": 407,
+  "h": 402
  },
  "school-desk": {
   "w": 464,
   "h": 422
  },
- "bookshelf": {
+ "ball-pit": {
   "w": 374,
   "h": 342
  },

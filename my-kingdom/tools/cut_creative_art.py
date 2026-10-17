@@ -34,9 +34,10 @@ PIECES = {
     'zoo-bunny': ('interiors', (995, 325, 1125, 505), [], 220),
     'zoo-koala': ('interiors', (835, 555, 965, 840), [], 300),
     'zoo-lion': ('interiors', (1025, 580, 1225, 960), [(1025, 900, 1225, 960)], 340),
-    'park-climber': ('interiors', (235, 970, 660, 1420), [], 380),
+    'park-slide': ('interiors', (232, 1012, 372, 1192), [], 300),
+    'park-swings': ('interiors', (372, 960, 625, 1210), [], 360),
     'school-desk': ('interiors', (725, 1015, 1215, 1460), [], 380),
-    'bookshelf': ('interiors', (275, 1520, 570, 1795), [], 300),
+    'ball-pit': ('interiors', (275, 1520, 570, 1795), [], 300),
     # Furniture
     'baby-bed': ('furniture', (280, 470, 850, 840), [(640, 450, 1060, 620)], 380),
     'big-kid-bed': ('furniture', (875, 640, 1260, 930), [(1010, 560, 1160, 650)], 300),
